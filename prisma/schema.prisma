@@ -1,0 +1,161 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ============================================
+// USER & AUTH (NextAuth compatible)
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?   // For credentials auth
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  accounts      Account[]
+  sessions      Session[]
+  alerts        PriceAlert[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ============================================
+// PRODUCTS & CATEGORIES
+// ============================================
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  slug        String    @unique
+  icon        String
+  color       String
+  createdAt   DateTime  @default(now())
+  
+  // Relations
+  products    Product[]
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  imageUrl    String?
+  categoryId  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  category    Category      @relation(fields: [categoryId], references: [id])
+  prices      PriceRecord[]
+  alerts      PriceAlert[]
+
+  @@index([categoryId])
+  @@index([name])
+}
+
+// ============================================
+// RETAILERS & PRICES
+// ============================================
+
+model Retailer {
+  id               String   @id @default(cuid())
+  name             String   @unique
+  slug             String   @unique
+  logoUrl          String?
+  affiliateNetwork String?  // e.g., "awin", "amazon", "ebay"
+  affiliateId      String?  // Your affiliate ID for this retailer
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+
+  // Relations
+  prices           PriceRecord[]
+}
+
+model PriceRecord {
+  id           String   @id @default(cuid())
+  productId    String
+  retailerId   String
+  price        Float
+  originalPrice Float?
+  url          String
+  affiliateUrl String?
+  inStock      Boolean  @default(true)
+  recordedAt   DateTime @default(now())
+
+  // Relations
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  retailer Retailer @relation(fields: [retailerId], references: [id])
+
+  @@index([productId, recordedAt])
+  @@index([retailerId])
+}
+
+// ============================================
+// PRICE ALERTS
+// ============================================
+
+model PriceAlert {
+  id              String   @id @default(cuid())
+  userId          String
+  productId       String
+  targetPrice     Float?   // Alert when price drops below this
+  alertOnAnyDrop  Boolean  @default(false)  // Alert on any price drop
+  notifyEmail     Boolean  @default(true)
+  notifyPush      Boolean  @default(true)
+  isActive        Boolean  @default(true)
+  lastNotified    DateTime?
+  createdAt       DateTime @default(now())
+
+  // Relations
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([productId])
+}
