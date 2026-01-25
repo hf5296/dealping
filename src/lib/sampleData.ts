@@ -71,7 +71,7 @@ export const featuredDeals = [
     {
         id: "p1",
         name: "BIC Twin Lady Razor Pouch 5",
-        imageUrl: "https://images.unsplash.com/photo-1585652757141-8837d676f3a3?w=400&h=400&fit=crop",
+        imageUrl: "https://images.unsplash.com/photo-1631729371254-42c2892f0e6e?w=400&h=400&fit=crop",
         currentPrice: 2.49,
         originalPrice: 3.99,
         retailer: "Amazon UK",
