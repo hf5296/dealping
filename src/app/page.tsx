@@ -4,29 +4,27 @@ import SearchBar from "@/components/SearchBar";
 import CategoryCard from "@/components/CategoryCard";
 import ProductCard from "@/components/ProductCard";
 import { categories } from "@/lib/sampleData";
-import { browseDeals, DealPingProduct, PRICE_TYPES } from "@/lib/keepa";
+import { getLightningDeals, DealPingProduct } from "@/lib/keepa";
 
-// Revalidate every 5 minutes
-export const revalidate = 300;
+// Static page - deals are refreshed once daily via cron job at midnight
+// The cron job calls /api/cron/refresh-deals which revalidates this page
+export const revalidate = false; // Fully static until revalidated
 
 async function getTodaysBestDeals(): Promise<DealPingProduct[]> {
   try {
-    // Use Browse Deals API - more efficient and designed for this purpose
-    const result = await browseDeals({
-      page: 0,
-      minPercentOff: 20,
-      sortBy: 'percentOff',
-      hasReviews: true,
-      priceType: PRICE_TYPES.AMAZON,
-      dateRange: 0, // Last 24 hours
+    // Use Lightning Deals API - these are Amazon's official promotions
+    // with GUARANTEED strikethrough pricing (no guessing!)
+    const result = await getLightningDeals({
+      state: 'AVAILABLE',
+      minPercentOff: 15,
+      minRating: 3.0,
+      minReviews: 5,
+      limit: 8,
     });
 
-    // Filter for valid products and return top 8
-    return result.deals
-      .filter(d => d.currentPrice > 0 && d.percentOff >= 20)
-      .slice(0, 8);
+    return result.deals;
   } catch (error) {
-    console.error('Error fetching deals from Keepa:', error);
+    console.error('Error fetching lightning deals from Keepa:', error);
     return [];
   }
 }
@@ -85,15 +83,15 @@ export default async function Home() {
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                    Today&apos;s Best Deals
+                    Lightning Deals
                   </h2>
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>
                     Live
                   </span>
                 </div>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Price drops from the last 24 hours
+                  Limited-time Amazon deals with verified discounts
                 </p>
               </div>
               <a

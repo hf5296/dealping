@@ -157,3 +157,32 @@ body {
 .pulse-green {
   animation: pulse-green 2s infinite;
 }
+
+/* Safe area support for mobile devices with notches/home indicators */
+.h-safe-area-inset-bottom {
+  height: env(safe-area-inset-bottom, 0px);
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Touch-friendly tap targets */
+@media (pointer: coarse) {
+  button,
+  a,
+  [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Prevent overscroll bounce on iOS */
+html {
+  overscroll-behavior: none;
+}
+
+/* Better touch scrolling */
+.scroll-touch {
+  -webkit-overflow-scrolling: touch;
+}

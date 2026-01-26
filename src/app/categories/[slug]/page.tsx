@@ -1,6 +1,6 @@
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import ProductCard from "@/components/ProductCard";
+import CategoryDealsClient from "./CategoryDealsClient";
 import { categories } from "@/lib/sampleData";
 import { browseDeals, DealPingProduct, UK_CATEGORIES, PRICE_TYPES } from "@/lib/keepa";
 import { notFound } from "next/navigation";
@@ -39,10 +39,11 @@ async function getCategoryDeals(categoryId: number): Promise<DealPingProduct[]> 
             sortBy: 'percentOff',
             hasReviews: true,
             priceType: PRICE_TYPES.AMAZON,
-            dateRange: 0,
+            dateRange: 1, // Last 7 days for more deals
+            limit: 50,
         });
 
-        return result.deals.slice(0, 24); // Show up to 24 deals
+        return result.deals.slice(0, 24); // Show up to 24 deals initially
     } catch (error) {
         console.error('Error fetching category deals:', error);
         return [];
@@ -84,65 +85,18 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
                                 {category.name} Deals
                             </h1>
                             <p className="text-sm text-gray-500 dark:text-gray-400">
-                                {deals.length > 0
-                                    ? `${deals.length} deals found`
-                                    : 'Loading deals...'}
+                                Find the best {category.name.toLowerCase()} deals on Amazon UK
                             </p>
                         </div>
                     </div>
                 </div>
 
-                {/* Filter pills */}
-                <div className="mb-6 flex flex-wrap gap-2">
-                    {["All Deals", "20%+ Off", "50%+ Off", "Under £25", "Under £50"].map(
-                        (filter, idx) => (
-                            <button
-                                key={filter}
-                                className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${idx === 0
-                                        ? "bg-emerald-600 text-white"
-                                        : "border border-gray-200 bg-white text-gray-600 hover:border-emerald-500 hover:text-emerald-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
-                                    }`}
-                            >
-                                {filter}
-                            </button>
-                        )
-                    )}
-                </div>
-
-                {/* Products grid */}
-                {deals.length > 0 ? (
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                        {deals.map((deal) => (
-                            <ProductCard
-                                key={deal.id}
-                                id={deal.id}
-                                name={deal.name}
-                                imageUrl={deal.imageUrl}
-                                currentPrice={deal.currentPrice}
-                                originalPrice={deal.originalPrice}
-                                retailer={deal.retailer}
-                                dealScore={deal.dealScore}
-                                percentOff={deal.percentOff}
-                                affiliateUrl={deal.affiliateUrl}
-                            />
-                        ))}
-                    </div>
-                ) : (
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-12 text-center dark:border-gray-700 dark:bg-gray-800">
-                        <p className="text-gray-500 dark:text-gray-400">
-                            No deals found for this category right now. Check back later!
-                        </p>
-                    </div>
-                )}
-
-                {/* Info section */}
-                {deals.length > 0 && (
-                    <div className="mt-8 text-center">
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                            Showing {deals.length} deals • Updated every 5 minutes
-                        </p>
-                    </div>
-                )}
+                {/* Client component handles filtering, sorting, and load more */}
+                <CategoryDealsClient
+                    initialDeals={deals}
+                    categorySlug={slug}
+                    categoryName={category.name}
+                />
             </main>
 
             <Footer />

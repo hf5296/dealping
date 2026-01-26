@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { browseDeals, UK_CATEGORIES, PRICE_TYPES } from '@/lib/keepa';
 
-// Cache deals for 5 minutes to save API tokens
-let cachedDeals: { data: unknown; timestamp: number; key: string } | null = null;
+// Cache deals per page/category for 5 minutes to save API tokens
+const dealsCache = new Map<string, { data: unknown; timestamp: number }>();
 const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
 export async function GET(request: NextRequest) {
@@ -39,13 +39,13 @@ export async function GET(request: NextRequest) {
             'gaming': UK_CATEGORIES.VIDEO_GAMES,
             'video-games': UK_CATEGORIES.VIDEO_GAMES,
             'books': UK_CATEGORIES.BOOKS,
-            'stationery': UK_CATEGORIES.BOOKS, // Map to books as closest
+            'stationery': UK_CATEGORIES.BOOKS,
             'food-drink': UK_CATEGORIES.GROCERY,
         };
 
         const categoryId = category ? categoryMap[category] : undefined;
 
-        // Create cache key
+        // Create cache key that includes ALL parameters
         const cacheKey = JSON.stringify({
             page,
             categoryId,
@@ -56,12 +56,17 @@ export async function GET(request: NextRequest) {
             sortBy,
             search,
             isLowest,
+            limit,
         });
 
         // Check cache
-        if (cachedDeals && cachedDeals.key === cacheKey && Date.now() - cachedDeals.timestamp < CACHE_DURATION_MS) {
-            return NextResponse.json(cachedDeals.data);
+        const cached = dealsCache.get(cacheKey);
+        if (cached && Date.now() - cached.timestamp < CACHE_DURATION_MS) {
+            console.log(`[/api/deals] Cache hit for page ${page}, category ${category || 'all'}`);
+            return NextResponse.json(cached.data);
         }
+
+        console.log(`[/api/deals] Fetching page ${page} for category ${category || 'all'}`);
 
         // Fetch deals from Keepa
         const result = await browseDeals({
@@ -75,7 +80,8 @@ export async function GET(request: NextRequest) {
             titleSearch: search,
             isLowest,
             priceType: PRICE_TYPES.AMAZON,
-            dateRange: 0, // Last 24 hours for freshest deals
+            dateRange: 1, // Last 7 days for more deals
+            limit,
         });
 
         // Limit results
@@ -86,15 +92,24 @@ export async function GET(request: NextRequest) {
             deals: limitedDeals,
             total: result.deals.length,
             page,
+            hasMore: result.hasMore && limitedDeals.length >= limit,
             tokensLeft: result.tokensLeft,
         };
 
         // Update cache
-        cachedDeals = {
+        dealsCache.set(cacheKey, {
             data: responseData,
             timestamp: Date.now(),
-            key: cacheKey,
-        };
+        });
+
+        // Clean up old cache entries (keep last 50)
+        if (dealsCache.size > 50) {
+            const entries = Array.from(dealsCache.entries());
+            entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+            for (let i = 0; i < entries.length - 50; i++) {
+                dealsCache.delete(entries[i][0]);
+            }
+        }
 
         return NextResponse.json(responseData);
     } catch (error) {
@@ -104,6 +119,7 @@ export async function GET(request: NextRequest) {
                 success: false,
                 error: error instanceof Error ? error.message : 'Failed to fetch deals',
                 deals: [],
+                hasMore: false,
             },
             { status: 500 }
         );

@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getProduct } from '@/lib/keepa';
-
-// Cache product details for 1 hour
-const productCache = new Map<string, { data: unknown; timestamp: number }>();
-const CACHE_DURATION_MS = 60 * 60 * 1000; // 1 hour
+import { getProductWithHistory } from '@/lib/keepa';
 
 export async function GET(
     request: NextRequest,
@@ -11,22 +7,21 @@ export async function GET(
 ) {
     try {
         const { asin } = await params;
+        const searchParams = request.nextUrl.searchParams;
+        const includeHistory = searchParams.get('history') === 'true';
 
-        if (!asin) {
+        if (!asin || asin.length < 5) {
             return NextResponse.json(
-                { success: false, error: 'ASIN is required' },
+                { success: false, error: 'Invalid ASIN' },
                 { status: 400 }
             );
         }
 
-        // Check cache
-        const cached = productCache.get(asin);
-        if (cached && Date.now() - cached.timestamp < CACHE_DURATION_MS) {
-            return NextResponse.json(cached.data);
-        }
-
-        // Get product from Keepa
-        const result = await getProduct(asin, { stats: 90, history: false });
+        // This function uses file-based caching (24 hour cache)
+        // First request costs ~2 tokens, subsequent requests are free
+        const result = await getProductWithHistory(asin, {
+            historyDays: includeHistory ? 1825 : 90, // 5 years if history requested
+        });
 
         if (!result.product) {
             return NextResponse.json(
@@ -35,19 +30,13 @@ export async function GET(
             );
         }
 
-        const responseData = {
+        return NextResponse.json({
             success: true,
             product: result.product,
+            priceHistory: includeHistory ? result.priceHistory : null,
+            fromCache: result.fromCache,
             tokensLeft: result.tokensLeft,
-        };
-
-        // Update cache
-        productCache.set(asin, {
-            data: responseData,
-            timestamp: Date.now(),
         });
-
-        return NextResponse.json(responseData);
     } catch (error) {
         console.error('Error fetching product:', error);
         return NextResponse.json(
