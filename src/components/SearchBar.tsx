@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 interface SearchBarProps {
     placeholder?: string;
@@ -15,12 +14,12 @@ export default function SearchBar({
     size = "default",
 }: SearchBarProps) {
     const [query, setQuery] = useState("");
-    const router = useRouter();
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (query.trim()) {
-            router.push(`/search?q=${encodeURIComponent(query.trim())}`);
+            // Use window.location for full page reload to fetch fresh server data
+            window.location.href = `/search?q=${encodeURIComponent(query.trim())}`;
         }
     };
 
