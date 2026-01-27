@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { browseDeals, UK_CATEGORIES, PRICE_TYPES } from '@/lib/keepa';
 
-// Cache deals per page/category for 5 minutes to save API tokens
-const dealsCache = new Map<string, { data: unknown; timestamp: number }>();
-const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
-
 export async function GET(request: NextRequest) {
     try {
         const searchParams = request.nextUrl.searchParams;
@@ -45,30 +41,7 @@ export async function GET(request: NextRequest) {
 
         const categoryId = category ? categoryMap[category] : undefined;
 
-        // Create cache key that includes ALL parameters
-        const cacheKey = JSON.stringify({
-            page,
-            categoryId,
-            minPercentOff,
-            maxPercentOff,
-            minPrice,
-            maxPrice,
-            sortBy,
-            search,
-            isLowest,
-            limit,
-        });
-
-        // Check cache
-        const cached = dealsCache.get(cacheKey);
-        if (cached && Date.now() - cached.timestamp < CACHE_DURATION_MS) {
-            console.log(`[/api/deals] Cache hit for page ${page}, category ${category || 'all'}`);
-            return NextResponse.json(cached.data);
-        }
-
-        console.log(`[/api/deals] Fetching page ${page} for category ${category || 'all'}`);
-
-        // Fetch deals from Keepa
+        // browseDeals has its own file-based cache (10 min), so no need for in-memory cache here
         const result = await browseDeals({
             page,
             category: categoryId,
@@ -80,38 +53,26 @@ export async function GET(request: NextRequest) {
             titleSearch: search,
             isLowest,
             priceType: PRICE_TYPES.AMAZON,
-            dateRange: 1, // Last 7 days for more deals
-            limit,
+            dateRange: 0, // All current deals (not just recent price drops)
+            limit: Math.min(limit, 150),
+            validateRRP: false,
+            // Anti-fake-deal filters:
+            isLowest90: true,
+            maxSalesRank: 100000,
+            minRating: 35,
         });
 
         // Limit results
         const limitedDeals = result.deals.slice(0, limit);
 
-        const responseData = {
+        return NextResponse.json({
             success: true,
             deals: limitedDeals,
             total: result.deals.length,
             page,
             hasMore: result.hasMore && limitedDeals.length >= limit,
             tokensLeft: result.tokensLeft,
-        };
-
-        // Update cache
-        dealsCache.set(cacheKey, {
-            data: responseData,
-            timestamp: Date.now(),
         });
-
-        // Clean up old cache entries (keep last 50)
-        if (dealsCache.size > 50) {
-            const entries = Array.from(dealsCache.entries());
-            entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
-            for (let i = 0; i < entries.length - 50; i++) {
-                dealsCache.delete(entries[i][0]);
-            }
-        }
-
-        return NextResponse.json(responseData);
     } catch (error) {
         console.error('Error fetching deals:', error);
         return NextResponse.json(

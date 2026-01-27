@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import ProductCard from "@/components/ProductCard";
+import ProductCardSkeleton from "@/components/ProductCardSkeleton";
 import { DealPingProduct } from "@/lib/keepa";
+
+const VISIBLE_INCREMENT = 20;
 
 interface DealsClientProps {
     initialDeals: DealPingProduct[];
@@ -11,19 +14,21 @@ interface DealsClientProps {
 type SortOption = "percentOff" | "price-low" | "price-high" | "rating";
 
 export default function DealsClient({ initialDeals }: DealsClientProps) {
-    const [deals, setDeals] = useState<DealPingProduct[]>(initialDeals);
+    const [allDeals, setAllDeals] = useState<DealPingProduct[]>(initialDeals);
     const [sortBy, setSortBy] = useState<SortOption>("percentOff");
     const [minDiscount, setMinDiscount] = useState<number>(0);
     const [maxPrice, setMaxPrice] = useState<number>(0); // 0 = no limit
-    const [page, setPage] = useState(0);
-    const [loading, setLoading] = useState(false);
-    const [hasMore, setHasMore] = useState(initialDeals.length >= 50);
+    const [visibleCount, setVisibleCount] = useState(VISIBLE_INCREMENT);
+    const [apiPage, setApiPage] = useState(0);
+    const [apiHasMore, setApiHasMore] = useState(initialDeals.length >= 50);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const sentinelRef = useRef<HTMLDivElement>(null);
+    const loadingRef = useRef(false);
 
     // Filter and sort deals
     const filteredDeals = useMemo(() => {
-        let result = [...deals];
+        let result = [...allDeals];
 
-        // Apply filters
         if (minDiscount > 0) {
             result = result.filter((d) => d.percentOff >= minDiscount);
         }
@@ -31,7 +36,6 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
             result = result.filter((d) => d.currentPrice <= maxPrice);
         }
 
-        // Apply sorting
         switch (sortBy) {
             case "percentOff":
                 result.sort((a, b) => b.percentOff - a.percentOff);
@@ -48,35 +52,88 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
         }
 
         return result;
-    }, [deals, sortBy, minDiscount, maxPrice]);
+    }, [allDeals, sortBy, minDiscount, maxPrice]);
 
-    const loadMore = useCallback(async () => {
-        if (loading) return;
+    const visibleDeals = filteredDeals.slice(0, visibleCount);
+    const hasMoreLocal = visibleCount < filteredDeals.length;
+    const canFetchMore = apiHasMore && !isLoadingMore;
 
-        setLoading(true);
+    // Fetch the next API page when all local data has been revealed
+    const fetchNextPage = useCallback(async () => {
+        if (isLoadingMore || !apiHasMore) return;
+
+        setIsLoadingMore(true);
         try {
-            const nextPage = page + 1;
-            const response = await fetch(`/api/deals?page=${nextPage}&limit=50`);
+            const nextPage = apiPage + 1;
+            const response = await fetch(`/api/deals?page=${nextPage}&limit=150`);
 
-            if (!response.ok) {
-                throw new Error("Failed to load more deals");
-            }
+            if (!response.ok) throw new Error("Failed to load more deals");
 
             const data = await response.json();
 
             if (data.deals && data.deals.length > 0) {
-                setDeals((prev) => [...prev, ...data.deals]);
-                setPage(nextPage);
-                setHasMore(data.hasMore ?? data.deals.length >= 50);
+                const existingAsins = new Set(allDeals.map((d) => d.asin));
+                const newDeals = data.deals.filter(
+                    (d: DealPingProduct) => !existingAsins.has(d.asin)
+                );
+                if (newDeals.length > 0) {
+                    setAllDeals((prev) => [...prev, ...newDeals]);
+                    setVisibleCount((prev) => prev + VISIBLE_INCREMENT);
+                }
+                setApiPage(nextPage);
+                setApiHasMore(data.hasMore ?? data.deals.length >= 50);
             } else {
-                setHasMore(false);
+                setApiHasMore(false);
             }
         } catch (error) {
             console.error("Error loading more deals:", error);
         } finally {
-            setLoading(false);
+            setIsLoadingMore(false);
+            loadingRef.current = false;
         }
-    }, [page, loading]);
+    }, [apiPage, isLoadingMore, apiHasMore, allDeals]);
+
+    // Reveal local data with a delay so skeletons are visible
+    const revealLocalBatch = useCallback(() => {
+        setIsLoadingMore(true);
+        setTimeout(() => {
+            setVisibleCount((prev) => prev + VISIBLE_INCREMENT);
+            setIsLoadingMore(false);
+            loadingRef.current = false;
+        }, 1000);
+    }, []);
+
+    // Infinite scroll via IntersectionObserver
+    useEffect(() => {
+        const sentinel = sentinelRef.current;
+        if (!sentinel) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting && !loadingRef.current) {
+                    loadingRef.current = true;
+                    if (hasMoreLocal) {
+                        revealLocalBatch();
+                    } else if (canFetchMore) {
+                        fetchNextPage();
+                    } else {
+                        loadingRef.current = false;
+                    }
+                }
+            },
+            { rootMargin: "200px" }
+        );
+
+        observer.observe(sentinel);
+        return () => observer.disconnect();
+    }, [hasMoreLocal, canFetchMore, fetchNextPage, revealLocalBatch]);
+
+    // Reset visible count when filter/sort changes
+    useEffect(() => {
+        setVisibleCount(VISIBLE_INCREMENT);
+        setIsLoadingMore(false);
+        loadingRef.current = false;
+    }, [sortBy, minDiscount, maxPrice]);
 
     const clearFilters = () => {
         setMinDiscount(0);
@@ -92,9 +149,10 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
             <div className="mb-6 flex flex-wrap items-center gap-4 rounded-xl bg-white p-4 shadow-sm dark:bg-gray-800">
                 {/* Deal count */}
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {filteredDeals.length === deals.length
-                        ? `${deals.length} deals`
-                        : `${filteredDeals.length} of ${deals.length} deals`}
+                    Showing {visibleDeals.length} of{" "}
+                    {filteredDeals.length === allDeals.length
+                        ? `${allDeals.length} deals`
+                        : `${filteredDeals.length} deals (filtered from ${allDeals.length})`}
                 </span>
 
                 <div className="flex-1" />
@@ -164,9 +222,9 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
             </div>
 
             {/* Deals Grid */}
-            {filteredDeals.length > 0 ? (
+            {visibleDeals.length > 0 ? (
                 <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                    {filteredDeals.map((deal, index) => (
+                    {visibleDeals.map((deal, index) => (
                         <ProductCard
                             key={`${deal.id}-${index}`}
                             id={deal.id}
@@ -178,6 +236,7 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
                             dealScore={deal.dealScore}
                             percentOff={deal.percentOff}
                             affiliateUrl={deal.affiliateUrl}
+                            createdAt={deal.createdAt}
                         />
                     ))}
                 </div>
@@ -213,49 +272,25 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
                 </div>
             )}
 
-            {/* Load more button */}
-            {hasMore && filteredDeals.length > 0 && !hasActiveFilters && (
-                <div className="mt-8 text-center">
-                    <button
-                        onClick={loadMore}
-                        disabled={loading}
-                        className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-                    >
-                        {loading ? (
-                            <>
-                                <svg
-                                    className="h-4 w-4 animate-spin"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <circle
-                                        className="opacity-25"
-                                        cx="12"
-                                        cy="12"
-                                        r="10"
-                                        stroke="currentColor"
-                                        strokeWidth="4"
-                                    />
-                                    <path
-                                        className="opacity-75"
-                                        fill="currentColor"
-                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                    />
-                                </svg>
-                                Loading...
-                            </>
-                        ) : (
-                            "Load More Deals"
-                        )}
-                    </button>
+            {/* Skeleton loading row */}
+            {isLoadingMore && (
+                <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                        <ProductCardSkeleton key={`skeleton-${i}`} />
+                    ))}
                 </div>
             )}
 
-            {/* Info section */}
-            {deals.length > 0 && !hasMore && !hasActiveFilters && (
+            {/* Scroll sentinel */}
+            {(hasMoreLocal || canFetchMore) && visibleDeals.length > 0 && (
+                <div ref={sentinelRef} className="h-1" />
+            )}
+
+            {/* End of results */}
+            {filteredDeals.length > 0 && !hasMoreLocal && !apiHasMore && (
                 <div className="mt-8 text-center">
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                        All {deals.length} deals loaded
+                        All {filteredDeals.length} deals shown
                     </p>
                 </div>
             )}

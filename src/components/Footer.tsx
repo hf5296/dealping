@@ -4,7 +4,7 @@ export default function Footer() {
     return (
         <footer className="border-t border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
             <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-                <div className="grid gap-8 md:grid-cols-4">
+                <div className="grid gap-8 md:grid-cols-3">
                     {/* Brand */}
                     <div className="md:col-span-1">
                         <Link href="/" className="flex items-center gap-2">
@@ -45,25 +45,6 @@ export default function Footer() {
                                         className="text-sm text-gray-500 hover:text-emerald-500 dark:text-gray-400"
                                     >
                                         {cat}
-                                    </Link>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-
-                    {/* Retailers */}
-                    <div>
-                        <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-gray-900 dark:text-white">
-                            Top Retailers
-                        </h3>
-                        <ul className="space-y-3">
-                            {["Amazon UK", "Currys", "Argos", "Tesco", "John Lewis"].map((retailer) => (
-                                <li key={retailer}>
-                                    <Link
-                                        href={`/retailers/${retailer.toLowerCase().replace(/ /g, "-")}`}
-                                        className="text-sm text-gray-500 hover:text-emerald-500 dark:text-gray-400"
-                                    >
-                                        {retailer}
                                     </Link>
                                 </li>
                             ))}

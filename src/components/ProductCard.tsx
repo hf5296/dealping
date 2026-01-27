@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { formatTimeAgo } from "@/lib/utils";
 
 interface ProductCardProps {
     id: string;
@@ -13,6 +14,7 @@ interface ProductCardProps {
     dealScore?: "amazing" | "great" | "good";
     percentOff?: number;
     affiliateUrl?: string;
+    createdAt?: number;
 }
 
 export default function ProductCard({
@@ -25,6 +27,7 @@ export default function ProductCard({
     dealScore = "good",
     percentOff,
     affiliateUrl,
+    createdAt,
 }: ProductCardProps) {
     const scoreColors = {
         amazing: "bg-purple-500",
@@ -62,7 +65,7 @@ export default function ProductCard({
             {/* Product Image - links to product detail page */}
             <Link
                 href={productPageUrl}
-                className="block aspect-square overflow-hidden bg-gray-100 dark:bg-gray-700"
+                className="relative block aspect-square overflow-hidden bg-gray-100 dark:bg-gray-700"
             >
                 <Image
                     src={imageUrl}
@@ -72,6 +75,15 @@ export default function ProductCard({
                     className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                     unoptimized
                 />
+                {/* Posted time badge */}
+                {createdAt && (
+                    <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded-lg bg-gray-900/70 px-2 py-1 text-xs font-semibold text-white backdrop-blur-sm">
+                        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {formatTimeAgo(createdAt)}
+                    </span>
+                )}
             </Link>
 
             {/* Product Info */}

@@ -14,8 +14,13 @@ async function getDeals(): Promise<DealPingProduct[]> {
             sortBy: 'percentOff',
             hasReviews: true,
             priceType: PRICE_TYPES.AMAZON,
-            dateRange: 1, // Last 7 days for more deals
-            limit: 100, // Get more deals for client-side filtering
+            dateRange: 0, // All current deals (not just recent price drops)
+            limit: 150, // Keepa returns up to 150 per page
+            validateRRP: false, // Use Keepa's data directly
+            // Anti-fake-deal filters:
+            isLowest90: true, // Price must be at 90-day low
+            maxSalesRank: 100000, // Only popular products (top 100k)
+            minRating: 35, // At least 3.5 stars
         });
 
         return result.deals;
@@ -41,13 +46,13 @@ export default async function DealsPage() {
                                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75"></span>
                                 <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-600"></span>
                             </span>
-                            Live from Amazon UK
+                            Amazon UK Deals
                         </div>
                         <h1 className="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl">
-                            Today&apos;s Best Deals
+                            Today's Deals
                         </h1>
                         <p className="mt-2 text-gray-500 dark:text-gray-400">
-                            Real-time price drops from Amazon UK. Updated every 5 minutes.
+                            Products at their 90-day lowest price. Always verify final price on Amazon before purchasing.
                         </p>
                     </div>
 

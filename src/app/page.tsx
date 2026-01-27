@@ -10,16 +10,17 @@ import { getLightningDeals, DealPingProduct } from "@/lib/keepa";
 // The cron job calls /api/cron/refresh-deals which revalidates this page
 export const revalidate = false; // Fully static until revalidated
 
-async function getTodaysBestDeals(): Promise<DealPingProduct[]> {
+async function getLightningDealsForHomepage(): Promise<DealPingProduct[]> {
   try {
-    // Use Lightning Deals API - these are Amazon's official promotions
-    // with GUARANTEED strikethrough pricing (no guessing!)
+    // Lightning Deals only - Amazon's official promotions with GUARANTEED
+    // strikethrough pricing. No fallback to avoid showing misleading discounts.
+    // Max 10 deals, refreshed every 4 hours (3000 tokens/day)
     const result = await getLightningDeals({
       state: 'AVAILABLE',
       minPercentOff: 15,
       minRating: 3.0,
       minReviews: 5,
-      limit: 8,
+      limit: 10,
     });
 
     return result.deals;
@@ -30,7 +31,7 @@ async function getTodaysBestDeals(): Promise<DealPingProduct[]> {
 }
 
 export default async function Home() {
-  const todaysDeals = await getTodaysBestDeals();
+  const lightningDeals = await getLightningDealsForHomepage();
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950">
@@ -85,10 +86,12 @@ export default async function Home() {
                   <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
                     Lightning Deals
                   </h2>
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                    Live
-                  </span>
+                  {lightningDeals.length > 0 && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                      Live
+                    </span>
+                  )}
                 </div>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                   Limited-time Amazon deals with verified discounts
@@ -102,9 +105,9 @@ export default async function Home() {
               </a>
             </div>
 
-            {todaysDeals.length > 0 ? (
+            {lightningDeals.length > 0 ? (
               <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {todaysDeals.map((deal) => (
+                {lightningDeals.map((deal) => (
                   <ProductCard
                     key={deal.id}
                     id={deal.id}
@@ -116,13 +119,26 @@ export default async function Home() {
                     dealScore={deal.dealScore}
                     percentOff={deal.percentOff}
                     affiliateUrl={deal.affiliateUrl}
+                    createdAt={deal.createdAt}
                   />
                 ))}
               </div>
             ) : (
-              <div className="mt-6 rounded-lg border border-gray-200 bg-gray-50 p-8 text-center dark:border-gray-700 dark:bg-gray-800">
-                <p className="text-gray-500 dark:text-gray-400">
-                  Loading today&apos;s deals...
+              <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-8 text-center dark:border-amber-900/50 dark:bg-amber-900/20">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/50">
+                  <svg className="h-6 w-6 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-amber-800 dark:text-amber-300">
+                  No Lightning Deals Right Now
+                </h3>
+                <p className="mt-2 text-sm text-amber-700 dark:text-amber-400">
+                  Lightning deals are time-limited promotions from Amazon. Check back soon or browse our{' '}
+                  <a href="/deals" className="font-medium underline hover:no-underline">
+                    deals page
+                  </a>{' '}
+                  for more savings.
                 </p>
               </div>
             )}
@@ -164,78 +180,6 @@ export default async function Home() {
           </div>
         </section>
 
-        {/* How It Works - Simple */}
-        <section className="py-12 sm:py-16">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <h2 className="text-center text-2xl font-bold text-gray-900 dark:text-white">
-              How It Works
-            </h2>
-
-            <div className="mt-10 grid gap-8 sm:grid-cols-3">
-              <div className="text-center">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
-                <h3 className="mt-4 font-semibold text-gray-900 dark:text-white">Search</h3>
-                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                  Search for any product or browse categories
-                </p>
-              </div>
-
-              <div className="text-center">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
-                </div>
-                <h3 className="mt-4 font-semibold text-gray-900 dark:text-white">Compare</h3>
-                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                  See price history and check if it&apos;s a real deal
-                </p>
-              </div>
-
-              <div className="text-center">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                  </svg>
-                </div>
-                <h3 className="mt-4 font-semibold text-gray-900 dark:text-white">Save</h3>
-                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                  Set price alerts and get notified when prices drop
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* CTA Section - Minimal */}
-        <section className="border-t border-gray-100 bg-gray-50 py-12 dark:border-gray-800 dark:bg-gray-900 sm:py-16">
-          <div className="mx-auto max-w-3xl px-4 text-center sm:px-6 lg:px-8">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-              Never miss a deal
-            </h2>
-            <p className="mt-2 text-gray-500 dark:text-gray-400">
-              Create a free account to set price alerts and track your favourite products.
-            </p>
-            <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <a
-                href="/auth/signup"
-                className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
-              >
-                Create Free Account
-              </a>
-              <a
-                href="/deals"
-                className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-6 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-              >
-                Browse Deals
-              </a>
-            </div>
-          </div>
-        </section>
       </main>
 
       <Footer />

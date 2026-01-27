@@ -39,11 +39,16 @@ async function getCategoryDeals(categoryId: number): Promise<DealPingProduct[]> 
             sortBy: 'percentOff',
             hasReviews: true,
             priceType: PRICE_TYPES.AMAZON,
-            dateRange: 1, // Last 7 days for more deals
-            limit: 50,
+            dateRange: 0, // All current deals (not just recent price drops)
+            limit: 150, // Keepa returns up to 150 per page
+            validateRRP: false, // Use Keepa's data directly
+            // Anti-fake-deal filters (slightly relaxed for niche categories):
+            isLowest90: true, // Price must be at 90-day low
+            maxSalesRank: 200000, // Top 200k (more lenient for niche categories)
+            minRating: 35, // At least 3.5 stars
         });
 
-        return result.deals.slice(0, 24); // Show up to 24 deals initially
+        return result.deals;
     } catch (error) {
         console.error('Error fetching category deals:', error);
         return [];

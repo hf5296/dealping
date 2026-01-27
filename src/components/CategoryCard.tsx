@@ -37,12 +37,9 @@ export default function CategoryCard({
                 </div>
 
                 {/* Content */}
-                <h3 className="mb-1 text-lg font-semibold text-gray-900 dark:text-white">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                     {name}
                 </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {productCount.toLocaleString()} products
-                </p>
 
                 {/* Arrow indicator */}
                 <div

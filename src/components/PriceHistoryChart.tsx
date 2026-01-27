@@ -2,8 +2,8 @@
 
 import { useState, useMemo } from "react";
 import {
-    LineChart,
-    Line,
+    AreaChart,
+    Area,
     XAxis,
     YAxis,
     CartesianGrid,
@@ -49,9 +49,9 @@ const CustomTooltip = ({
 }) => {
     if (active && payload && payload.length) {
         return (
-            <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-800">
-                <p className="mb-1 text-xs text-gray-500">{label}</p>
-                <p className="text-lg font-bold text-emerald-600">
+            <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-md dark:border-gray-600 dark:bg-gray-800">
+                <p className="text-[11px] text-gray-400">{label}</p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">
                     £{payload[0].value.toFixed(2)}
                 </p>
             </div>
@@ -64,8 +64,8 @@ export default function PriceHistoryChart({
     data,
     currentPrice,
     averagePrice,
-    allTimeLow,
-    allTimeHigh,
+    allTimeLow: _allTimeLow,
+    allTimeHigh: _allTimeHigh,
 }: PriceHistoryChartProps) {
     const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>("3M");
 
@@ -102,6 +102,20 @@ export default function PriceHistoryChart({
 
         return data.filter((point) => point.timestamp >= cutoffTime);
     }, [data, selectedPeriod]);
+
+    // Compute stats from the actual data to ensure consistency with chart
+    const { low, high, avg } = useMemo(() => {
+        if (data.length === 0) return { low: currentPrice, high: currentPrice, avg: averagePrice };
+        const prices = data.map(d => d.price);
+        const dataLow = Math.min(...prices);
+        const dataHigh = Math.max(...prices);
+        const dataAvg = prices.reduce((sum, p) => sum + p, 0) / prices.length;
+        return {
+            low: Math.round(dataLow * 100) / 100,
+            high: Math.round(dataHigh * 100) / 100,
+            avg: Math.round(dataAvg * 100) / 100,
+        };
+    }, [data, currentPrice, averagePrice]);
 
     // Check if selected period exceeds available data
     const periodExceedsData = useMemo(() => {
@@ -158,21 +172,27 @@ export default function PriceHistoryChart({
         return `${(dataAgeInDays / 365).toFixed(1)} years`;
     }, [dataAgeInDays]);
 
+    // Price change indicator
+    const priceVsAvg = avg > 0 ? ((currentPrice - avg) / avg) * 100 : 0;
+    const isBelowAvg = priceVsAvg < -2;
+    const isAboveAvg = priceVsAvg > 2;
+
     return (
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
-            <div className="mb-6 flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+        <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-gray-700">
+                <h3 className="text-base font-semibold text-gray-900 dark:text-white">
                     Price History
                 </h3>
-                <div className="flex gap-2">
+                <div className="flex rounded-lg border border-gray-200 dark:border-gray-600">
                     {periods.map((period) => (
                         <button
                             key={period}
                             onClick={() => setSelectedPeriod(period)}
-                            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                            className={`px-3 py-1 text-xs font-medium transition-colors first:rounded-l-md last:rounded-r-md ${
                                 selectedPeriod === period
-                                    ? "bg-emerald-500 text-white"
-                                    : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+                                    ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
+                                    : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
                             }`}
                         >
                             {period}
@@ -181,119 +201,134 @@ export default function PriceHistoryChart({
                 </div>
             </div>
 
-            {/* Info banner when period exceeds available data */}
-            {periodExceedsData && (
-                <div className="mb-4 rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
-                    <span className="font-medium">Note:</span> Price history for this product only goes back {dataAgeText}.
-                    Showing all available data.
-                </div>
-            )}
-
-            {/* Stats row */}
-            <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <div className="rounded-xl bg-gray-50 p-4 dark:bg-gray-900">
-                    <p className="text-xs font-medium uppercase text-gray-500">Current</p>
-                    <p className="text-xl font-bold text-emerald-600">
-                        £{currentPrice.toFixed(2)}
-                    </p>
-                </div>
-                <div className="rounded-xl bg-gray-50 p-4 dark:bg-gray-900">
-                    <p className="text-xs font-medium uppercase text-gray-500">Average</p>
-                    <p className="text-xl font-bold text-gray-700 dark:text-gray-300">
-                        £{averagePrice.toFixed(2)}
-                    </p>
-                </div>
-                <div className="rounded-xl bg-emerald-50 p-4 dark:bg-emerald-900/20">
-                    <p className="text-xs font-medium uppercase text-emerald-600">
-                        All-Time Low
-                    </p>
-                    <p className="text-xl font-bold text-emerald-600">
-                        £{allTimeLow.toFixed(2)}
-                    </p>
-                </div>
-                <div className="rounded-xl bg-red-50 p-4 dark:bg-red-900/20">
-                    <p className="text-xs font-medium uppercase text-red-500">
-                        All-Time High
-                    </p>
-                    <p className="text-xl font-bold text-red-500">
-                        £{allTimeHigh.toFixed(2)}
-                    </p>
-                </div>
-            </div>
-
-            {/* Chart */}
-            <div className="h-[300px] w-full">
-                {filteredData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                        <LineChart
-                            data={filteredData}
-                            margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
-                        >
-                            <CartesianGrid
-                                strokeDasharray="3 3"
-                                stroke="#374151"
-                                strokeOpacity={0.2}
-                                vertical={false}
-                            />
-                            <XAxis
-                                dataKey="date"
-                                tick={{ fontSize: 11, fill: "#9ca3af" }}
-                                tickLine={false}
-                                axisLine={false}
-                                interval="preserveStartEnd"
-                                minTickGap={50}
-                            />
-                            <YAxis
-                                domain={[minPrice, maxPrice]}
-                                ticks={ticks}
-                                tick={{ fontSize: 11, fill: "#9ca3af" }}
-                                tickLine={false}
-                                axisLine={false}
-                                tickFormatter={(value) => `£${Math.round(value)}`}
-                                width={50}
-                            />
-                            <Tooltip content={<CustomTooltip />} />
-
-                            {/* Average price reference line */}
-                            <ReferenceLine
-                                y={averagePrice}
-                                stroke="#f59e0b"
-                                strokeDasharray="5 5"
-                                strokeOpacity={0.7}
-                            />
-
-                            {/* Price line */}
-                            <Line
-                                type="monotone"
-                                dataKey="price"
-                                stroke="#10b981"
-                                strokeWidth={2}
-                                dot={false}
-                                activeDot={{
-                                    r: 5,
-                                    fill: "#10b981",
-                                    stroke: "#fff",
-                                    strokeWidth: 2,
-                                }}
-                            />
-                        </LineChart>
-                    </ResponsiveContainer>
-                ) : (
-                    <div className="flex h-full items-center justify-center text-gray-500">
-                        No price data available for this period
+            <div className="px-6 py-5">
+                {/* Info banner when period exceeds available data */}
+                {periodExceedsData && (
+                    <div className="mb-4 rounded-lg bg-gray-50 px-4 py-2.5 text-xs text-gray-500 dark:bg-gray-900 dark:text-gray-400">
+                        Price history only goes back {dataAgeText}. Showing all available data.
                     </div>
                 )}
-            </div>
 
-            {/* Legend */}
-            <div className="mt-4 flex items-center justify-center gap-6 text-xs text-gray-500">
-                <div className="flex items-center gap-2">
-                    <div className="h-0.5 w-4 bg-emerald-500"></div>
-                    <span>Price</span>
+                {/* Stats row */}
+                <div className="mb-5 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+                    <div>
+                        <p className="text-[11px] font-medium tracking-wide text-gray-400 dark:text-gray-500">
+                            Current
+                        </p>
+                        <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                            £{currentPrice.toFixed(2)}
+                        </p>
+                        {(isBelowAvg || isAboveAvg) && (
+                            <p className={`text-[11px] font-medium ${isBelowAvg ? "text-emerald-600" : "text-red-500"}`}>
+                                {isBelowAvg ? `${Math.abs(Math.round(priceVsAvg))}% below avg` : `${Math.round(priceVsAvg)}% above avg`}
+                            </p>
+                        )}
+                    </div>
+                    <div>
+                        <p className="text-[11px] font-medium tracking-wide text-gray-400 dark:text-gray-500">
+                            Average
+                        </p>
+                        <p className="text-lg font-semibold text-amber-500">
+                            £{avg.toFixed(2)}
+                        </p>
+                    </div>
+                    <div>
+                        <p className="text-[11px] font-medium tracking-wide text-gray-400 dark:text-gray-500">
+                            Lowest
+                        </p>
+                        <p className="text-lg font-semibold text-emerald-600">
+                            £{low.toFixed(2)}
+                        </p>
+                    </div>
+                    <div>
+                        <p className="text-[11px] font-medium tracking-wide text-gray-400 dark:text-gray-500">
+                            Highest
+                        </p>
+                        <p className="text-lg font-semibold text-red-500">
+                            £{high.toFixed(2)}
+                        </p>
+                    </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <div className="h-0.5 w-4 border-t-2 border-dashed border-amber-500"></div>
-                    <span>Average</span>
+
+                {/* Chart */}
+                <div className="h-[280px] w-full border-t border-gray-100 pt-1 dark:border-gray-700">
+                    {filteredData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart
+                                data={filteredData}
+                                margin={{ top: 8, right: 8, left: 8, bottom: 0 }}
+                            >
+                                <defs>
+                                    <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#10b981" stopOpacity={0.12} />
+                                        <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid
+                                    horizontal={false}
+                                    vertical={false}
+                                />
+                                <XAxis
+                                    dataKey="date"
+                                    tick={{ fontSize: 11, fill: "#9ca3af" }}
+                                    tickLine={false}
+                                    axisLine={{ stroke: "#d1d5db", strokeWidth: 1 }}
+                                    interval="preserveStartEnd"
+                                    minTickGap={60}
+                                />
+                                <YAxis
+                                    domain={[minPrice, maxPrice]}
+                                    ticks={ticks}
+                                    tick={{ fontSize: 11, fill: "#9ca3af" }}
+                                    tickLine={false}
+                                    axisLine={{ stroke: "#d1d5db", strokeWidth: 1 }}
+                                    tickFormatter={(value) => `£${Math.round(value)}`}
+                                    width={48}
+                                />
+                                <Tooltip content={<CustomTooltip />} />
+
+                                {/* Average price reference line */}
+                                <ReferenceLine
+                                    y={avg}
+                                    stroke="#f59e0b"
+                                    strokeDasharray="4 4"
+                                    strokeOpacity={0.6}
+                                />
+
+                                {/* Price area + line (green) */}
+                                <Area
+                                    type="stepAfter"
+                                    dataKey="price"
+                                    stroke="#10b981"
+                                    strokeWidth={1.5}
+                                    fill="url(#priceGradient)"
+                                    dot={false}
+                                    activeDot={{
+                                        r: 4,
+                                        fill: "#10b981",
+                                        stroke: "#fff",
+                                        strokeWidth: 2,
+                                    }}
+                                />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <div className="flex h-full items-center justify-center text-sm text-gray-400">
+                            No price data available for this period
+                        </div>
+                    )}
+                </div>
+
+                {/* Legend */}
+                <div className="mt-3 flex items-center justify-center gap-5 text-[11px] text-gray-400">
+                    <div className="flex items-center gap-1.5">
+                        <div className="h-[2px] w-3.5 bg-emerald-500 rounded-full"></div>
+                        <span>Price</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <div className="h-[2px] w-3.5 border-t border-dashed border-amber-500 rounded-full"></div>
+                        <span>Average</span>
+                    </div>
                 </div>
             </div>
         </div>

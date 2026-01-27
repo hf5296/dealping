@@ -25,7 +25,7 @@ export async function sendPriceDropEmail(data: PriceDropEmailData) {
 
   try {
     const { error } = await resend.emails.send({
-      from: "FindADeal <alerts@findadeal.uk>",
+      from: process.env.RESEND_FROM_EMAIL || "DealPing <onboarding@resend.dev>",
       to: data.userEmail,
       subject: `🔔 Price Drop! ${data.productName} is now £${data.currentPrice.toFixed(2)}`,
       html: `
@@ -70,8 +70,8 @@ export async function sendPriceDropEmail(data: PriceDropEmailData) {
             <!-- Footer -->
             <div style="background-color: #f3f4f6; padding: 16px 24px; text-align: center;">
               <p style="color: #9ca3af; font-size: 12px; margin: 0;">
-                You received this email because you set up a price alert on FindADeal.
-                <a href="#" style="color: #10b981;">Manage alerts</a>
+                You received this email because you set up a price alert on DealPing.
+                <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/alerts" style="color: #10b981;">Manage alerts</a>
               </p>
             </div>
           </div>

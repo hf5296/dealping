@@ -181,9 +181,12 @@ export default function SearchBar({
                     <ul>
                         {filteredHistory.map((item, index) => (
                             <li key={index}>
-                                <button
+                                <div
+                                    role="button"
+                                    tabIndex={0}
                                     onClick={() => handleHistoryClick(item)}
-                                    className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700"
+                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleHistoryClick(item); }}
+                                    className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700"
                                 >
                                     <svg
                                         className="h-4 w-4 flex-shrink-0 text-gray-400"
@@ -210,7 +213,7 @@ export default function SearchBar({
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                         </svg>
                                     </button>
-                                </button>
+                                </div>
                             </li>
                         ))}
                     </ul>

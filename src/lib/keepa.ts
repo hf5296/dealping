@@ -15,10 +15,14 @@ const AMAZON_ASSOCIATE_TAG = 'findadeal0a-21';
 const CACHE_DIR = path.join(process.cwd(), '.cache');
 const LIGHTNING_DEALS_CACHE_FILE = path.join(CACHE_DIR, 'lightning-deals.json');
 const PRODUCTS_CACHE_DIR = path.join(CACHE_DIR, 'products');
+const BROWSE_DEALS_CACHE_DIR = path.join(CACHE_DIR, 'browse-deals');
+const SEARCH_CACHE_DIR = path.join(CACHE_DIR, 'search');
 
 // Cache durations
-const PRODUCT_CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours for product data
+const PRODUCT_CACHE_DURATION_MS = 1 * 60 * 60 * 1000; // 1 hour for product data (prices change frequently!)
 const PRICE_HISTORY_CACHE_DURATION_MS = 6 * 60 * 60 * 1000; // 6 hours for price history
+const BROWSE_DEALS_CACHE_DURATION_MS = 10 * 60 * 1000; // 10 minutes for browse deals
+const SEARCH_CACHE_DURATION_MS = 30 * 60 * 1000; // 30 minutes for search results
 
 // Ensure cache directory exists
 function ensureCacheDir() {
@@ -93,6 +97,90 @@ function writeProductCache(asin: string, entry: ProductCacheEntry): void {
         console.log(`[ProductCache] Cached product ${asin}`);
     } catch (error) {
         console.error(`[ProductCache] Error writing cache for ${asin}:`, error);
+    }
+}
+
+// --- Browse Deals Cache ---
+interface BrowseDealsCacheEntry {
+    deals: DealPingProduct[];
+    tokensLeft: number;
+    hasMore: boolean;
+    timestamp: number;
+}
+
+function getBrowseDealsCachePath(key: string): string {
+    // Create a safe filename from the cache key
+    const safeKey = Buffer.from(key).toString('base64url').slice(0, 100);
+    return path.join(BROWSE_DEALS_CACHE_DIR, `${safeKey}.json`);
+}
+
+function readBrowseDealsCache(key: string): BrowseDealsCacheEntry | null {
+    try {
+        const filePath = getBrowseDealsCachePath(key);
+        if (fs.existsSync(filePath)) {
+            const data = fs.readFileSync(filePath, 'utf-8');
+            const cached = JSON.parse(data) as BrowseDealsCacheEntry;
+            const age = Date.now() - cached.timestamp;
+            if (age < BROWSE_DEALS_CACHE_DURATION_MS) {
+                return cached;
+            }
+        }
+    } catch (error) {
+        console.error('[BrowseDealsCache] Read error:', error);
+    }
+    return null;
+}
+
+function writeBrowseDealsCache(key: string, entry: BrowseDealsCacheEntry): void {
+    try {
+        if (!fs.existsSync(BROWSE_DEALS_CACHE_DIR)) {
+            fs.mkdirSync(BROWSE_DEALS_CACHE_DIR, { recursive: true });
+        }
+        const filePath = getBrowseDealsCachePath(key);
+        fs.writeFileSync(filePath, JSON.stringify(entry), 'utf-8');
+    } catch (error) {
+        console.error('[BrowseDealsCache] Write error:', error);
+    }
+}
+
+// --- Search Cache ---
+interface SearchCacheEntry {
+    products: DealPingProduct[];
+    tokensLeft: number;
+    timestamp: number;
+}
+
+function getSearchCachePath(key: string): string {
+    const safeKey = Buffer.from(key).toString('base64url').slice(0, 100);
+    return path.join(SEARCH_CACHE_DIR, `${safeKey}.json`);
+}
+
+function readSearchCache(key: string): SearchCacheEntry | null {
+    try {
+        const filePath = getSearchCachePath(key);
+        if (fs.existsSync(filePath)) {
+            const data = fs.readFileSync(filePath, 'utf-8');
+            const cached = JSON.parse(data) as SearchCacheEntry;
+            const age = Date.now() - cached.timestamp;
+            if (age < SEARCH_CACHE_DURATION_MS) {
+                return cached;
+            }
+        }
+    } catch (error) {
+        console.error('[SearchCache] Read error:', error);
+    }
+    return null;
+}
+
+function writeSearchCache(key: string, entry: SearchCacheEntry): void {
+    try {
+        if (!fs.existsSync(SEARCH_CACHE_DIR)) {
+            fs.mkdirSync(SEARCH_CACHE_DIR, { recursive: true });
+        }
+        const filePath = getSearchCachePath(key);
+        fs.writeFileSync(filePath, JSON.stringify(entry), 'utf-8');
+    } catch (error) {
+        console.error('[SearchCache] Write error:', error);
     }
 }
 
@@ -273,6 +361,10 @@ export interface DealPingProduct {
     isLightningDeal?: boolean;
     percentClaimed?: number;    // 0-100, how much of the deal stock is claimed
     dealEndTime?: number;       // Keepa time when deal expires
+    // Price source tracking - 'list' = RRP, 'avg90' = 90-day average, 'deal' = deal API data
+    priceSource?: 'list' | 'avg90' | 'deal';
+    // When the deal was first posted (unix timestamp ms)
+    createdAt?: number;
 }
 
 /**
@@ -398,7 +490,17 @@ interface LightningDealsCache {
 // In-memory cache (fast access)
 let lightningDealsCache: LightningDealsCache | null = null;
 
-const LIGHTNING_DEALS_CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+const LIGHTNING_DEALS_CACHE_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours - refresh 6x/day (3000 tokens)
+
+/**
+ * Check if a lightning deal has expired based on its end time
+ */
+function isLightningDealExpired(dealEndTime: number | undefined): boolean {
+    if (!dealEndTime) return true; // No end time = consider expired
+    const keepaEpoch = new Date('2011-01-01T00:00:00Z').getTime();
+    const endDate = new Date(keepaEpoch + dealEndTime * 60 * 1000);
+    return endDate < new Date(); // Deal has ended
+}
 
 /**
  * Load Lightning Deals cache from file (if not already in memory)
@@ -505,16 +607,23 @@ export async function getLightningDeals(options: {
         if (cachedData) {
             const cacheAge = Date.now() - cachedData.timestamp;
             if (cacheAge < LIGHTNING_DEALS_CACHE_DURATION_MS) {
-                console.log(`[getLightningDeals] Returning cached data (age: ${Math.round(cacheAge / 60000)} minutes)`);
-                // Apply filters and limit to cached data
+                // Filter out expired deals and apply other filters
                 const filteredDeals = cachedData.deals
+                    .filter(deal => !isLightningDealExpired(deal.dealEndTime)) // Remove expired deals!
                     .filter(deal => deal.percentOff >= minPercentOff)
                     .slice(0, limit);
-                return {
-                    deals: filteredDeals,
-                    tokensLeft: cachedData.tokensLeft,
-                    fromCache: true,
-                };
+
+                // If all cached deals are expired, force a refresh
+                if (filteredDeals.length === 0) {
+                    console.log('[getLightningDeals] All cached deals expired, fetching fresh data');
+                } else {
+                    console.log(`[getLightningDeals] Returning cached data (age: ${Math.round(cacheAge / 60000)} minutes, ${filteredDeals.length} active deals)`);
+                    return {
+                        deals: filteredDeals,
+                        tokensLeft: cachedData.tokensLeft,
+                        fromCache: true,
+                    };
+                }
             }
         }
     }
@@ -535,18 +644,21 @@ export async function getLightningDeals(options: {
         const errorText = await response.text();
         console.log(`[getLightningDeals] API error ${response.status}: ${errorText}`);
 
-        // If API fails (rate limit, server error, etc.) but we have cache, return it
+        // If API fails (rate limit, server error, etc.) but we have cache, return non-expired deals
         const cachedData = loadLightningDealsCache();
         if (cachedData && cachedData.deals.length > 0) {
             console.log('[getLightningDeals] API failed, returning stale cache');
             const filteredDeals = cachedData.deals
+                .filter(deal => !isLightningDealExpired(deal.dealEndTime)) // Remove expired!
                 .filter(deal => deal.percentOff >= minPercentOff)
                 .slice(0, limit);
-            return {
-                deals: filteredDeals,
-                tokensLeft: 0,
-                fromCache: true,
-            };
+            if (filteredDeals.length > 0) {
+                return {
+                    deals: filteredDeals,
+                    tokensLeft: 0,
+                    fromCache: true,
+                };
+            }
         }
         throw new Error(`Keepa API error: ${response.status} - ${errorText}`);
     }
@@ -566,7 +678,20 @@ export async function getLightningDeals(options: {
         })
         .map((deal): DealPingProduct => {
             const currentPrice = deal.dealPrice / 100;  // Convert cents to pounds
-            const originalPrice = deal.currentPrice / 100;
+            let originalPrice = deal.currentPrice / 100;
+            let percentOff: number;
+
+            if (originalPrice > currentPrice) {
+                // We have distinct deal vs regular prices — calculate percentOff from them
+                percentOff = Math.round(((originalPrice - currentPrice) / originalPrice) * 100);
+            } else if (deal.percentOff > 0 && currentPrice > 0) {
+                // Keepa reports a discount but currentPrice == dealPrice (no separate regular price).
+                // Back-calculate the original price from Keepa's percentOff.
+                originalPrice = Math.round((currentPrice / (1 - deal.percentOff / 100)) * 100) / 100;
+                percentOff = deal.percentOff;
+            } else {
+                percentOff = 0;
+            }
 
             return {
                 id: deal.asin,
@@ -577,15 +702,16 @@ export async function getLightningDeals(options: {
                     : '/placeholder-product.png',
                 currentPrice,
                 originalPrice,
-                percentOff: deal.percentOff,
+                percentOff,
                 retailer: 'Amazon UK',
-                dealScore: calculateDealScore(deal.percentOff),
+                dealScore: calculateDealScore(percentOff),
                 affiliateUrl: generateAffiliateUrl(deal.asin),
                 rating: deal.rating / 10,
                 // Lightning deal specific info
                 isLightningDeal: true,
                 percentClaimed: deal.percentClaimed,
                 dealEndTime: deal.endTime,
+                createdAt: deal.startTime ? keepaTimeToDate(deal.startTime).getTime() : undefined,
             };
         });
 
@@ -611,6 +737,16 @@ export async function getLightningDeals(options: {
         tokensLeft: data.tokensLeft,
         fromCache: false,
     };
+}
+
+/**
+ * Look up an ASIN in the Lightning Deals cache
+ * Returns the cached deal data if found, null otherwise
+ */
+export function getLightningDealFromCache(asin: string): DealPingProduct | null {
+    const cache = loadLightningDealsCache();
+    if (!cache) return null;
+    return cache.deals.find(d => d.asin === asin && !isLightningDealExpired(d.dealEndTime)) || null;
 }
 
 /**
@@ -674,7 +810,13 @@ async function batchFetchProducts(asins: string[]): Promise<Map<string, ProductP
             const stats = product.stats;
             if (!stats) continue;
 
-            const currentPriceCents = stats.current?.[CSV_PRICE_INDICES.AMAZON] ?? stats.current?.[CSV_PRICE_INDICES.BUY_BOX] ?? -1;
+            const currentPriceCents =
+                stats.current?.[CSV_PRICE_INDICES.AMAZON] ??
+                stats.current?.[CSV_PRICE_INDICES.BUY_BOX] ??
+                stats.current?.[CSV_PRICE_INDICES.LIGHTNING] ??
+                stats.current?.[CSV_PRICE_INDICES.NEW_FBA] ??
+                stats.current?.[CSV_PRICE_INDICES.NEW] ??
+                -1;
             const listPriceCents = stats.current?.[CSV_PRICE_INDICES.LIST_PRICE] ?? -1;
             const avg90PriceCents = stats.avg90?.[CSV_PRICE_INDICES.AMAZON] ?? -1;
             const avg30PriceCents = stats.avg30?.[CSV_PRICE_INDICES.AMAZON] ?? -1;
@@ -711,6 +853,9 @@ export async function browseDeals(options: {
     titleSearch?: string;
     hasReviews?: boolean;
     isLowest?: boolean;
+    isLowest90?: boolean; // Price is at 90-day low (stronger signal of real deal)
+    maxSalesRank?: number; // Filter out obscure products (lower rank = more popular)
+    minRating?: number; // Minimum product rating (0-50, e.g. 40 = 4.0 stars)
     priceType?: number;
     dateRange?: number;
     excludeKindle?: boolean;
@@ -732,18 +877,41 @@ export async function browseDeals(options: {
         titleSearch,
         hasReviews = true,
         isLowest = false,
+        isLowest90 = false,
+        maxSalesRank,
+        minRating,
         priceType = PRICE_TYPES.AMAZON,
-        dateRange = 0, // Last 24 hours
-        excludeKindle = true, // Exclude Kindle/ebook by default
-        validateRRP = true, // Validate deals with actual LIST_PRICE by default
-        limit = 100, // Increased default limit to get more deals per page
+        dateRange = 0,
+        excludeKindle = true,
+        validateRRP = false,
+        limit = 150,
     } = options;
 
-    // Kindle Store category IDs to exclude
-    const KINDLE_CATEGORIES = [
+    // Check file-based cache first
+    const cacheKey = JSON.stringify({
+        page, category, minPercentOff, maxPercentOff, minPrice, maxPrice,
+        sortBy, titleSearch, hasReviews, isLowest, isLowest90, maxSalesRank,
+        minRating, priceType, dateRange, excludeKindle, validateRRP, limit,
+    });
+
+    const cached = readBrowseDealsCache(cacheKey);
+    if (cached) {
+        const ageMin = Math.round((Date.now() - cached.timestamp) / 60000);
+        console.log(`[browseDeals] Cache hit (age: ${ageMin}min, ${cached.deals.length} deals)`);
+        return { deals: cached.deals, tokensLeft: cached.tokensLeft, hasMore: cached.hasMore };
+    }
+
+    console.log(`[browseDeals] Cache miss, fetching from Keepa API`);
+
+    // Category IDs to exclude (Books, Kindle, Media tend to have inflated RRP discounts)
+    // Only exclude these when browsing ALL deals, not when a specific category is requested
+    const EXCLUDED_CATEGORIES = [
+        266239,     // Books UK
         341677031,  // Kindle Store UK
         362168031,  // Kindle eBooks
         341689031,  // Kindle eBooks > Fiction
+        283926,     // Music UK
+        300703,     // DVD & Blu-ray UK
     ];
 
     // Build query JSON
@@ -766,9 +934,10 @@ export async function browseDeals(options: {
         ],
     };
 
-    // Exclude Kindle categories
-    if (excludeKindle) {
-        queryJSON.excludeCategories = KINDLE_CATEGORIES;
+    // Exclude Books, Kindle, and Media categories (tend to have inflated RRP discounts)
+    // Only apply exclusions when browsing ALL deals, not category-specific browsing
+    if (excludeKindle && !category) {
+        queryJSON.excludeCategories = EXCLUDED_CATEGORIES;
     }
 
     if (category) {
@@ -780,7 +949,21 @@ export async function browseDeals(options: {
     }
 
     if (isLowest) {
+        queryJSON.isLowest = true;
+    }
+
+    if (isLowest90) {
         queryJSON.isLowest90 = true;
+    }
+
+    // Filter by sales rank - lower rank = more popular product = more likely legit deal
+    if (maxSalesRank) {
+        queryJSON.salesRankRange = [0, maxSalesRank];
+    }
+
+    // Filter by minimum rating
+    if (minRating) {
+        queryJSON.minRating = minRating;
     }
 
     const url = `${KEEPA_API_BASE}/deal?key=${KEEPA_API_KEY}`;
@@ -848,7 +1031,6 @@ export async function browseDeals(options: {
                 const listPrice = validatedPrices.listPrice;
                 const avg90Price = validatedPrices.avg90Price;
 
-
                 // VALIDATION STRATEGY:
                 // 1. We need BOTH a LIST_PRICE AND a 90-day average for validation
                 // 2. If LIST_PRICE is much higher than avg90 (>50% above), it's likely stale
@@ -915,9 +1097,33 @@ export async function browseDeals(options: {
                 isValidDeal = percentOff >= minPercentOff;
 
             } else {
-                // No validated prices - skip to be safe
-                // We don't want to show potentially fake discounts
-                return null;
+                // No validated prices - use Keepa's deal data directly
+                // Keepa's deltaPercent contains their calculated discount
+                const keepaPercentOff = deal.deltaPercent?.[0]?.[0];
+
+                if (!keepaPercentOff || keepaPercentOff < minPercentOff) {
+                    return null;
+                }
+
+                // Use the avg90 from the deal data if available
+                const avg90Cents = deal.avg90?.[0]?.[0];
+                if (avg90Cents && avg90Cents > 0) {
+                    originalPrice = keepaPriceToPounds(avg90Cents);
+                    percentOff = Math.round(((originalPrice - currentPrice) / originalPrice) * 100);
+
+                    // Sanity check - if our calculated discount differs too much from Keepa's, skip
+                    if (Math.abs(percentOff - keepaPercentOff) > 20) {
+                        // Use Keepa's percent and calculate back
+                        percentOff = keepaPercentOff;
+                        originalPrice = currentPrice / (1 - percentOff / 100);
+                    }
+                } else {
+                    // Fall back to Keepa's percentage
+                    percentOff = keepaPercentOff;
+                    originalPrice = currentPrice / (1 - percentOff / 100);
+                }
+
+                isValidDeal = percentOff >= minPercentOff && percentOff <= 80; // Cap at 80% to avoid anomalies
             }
 
             if (!isValidDeal) {
@@ -941,6 +1147,7 @@ export async function browseDeals(options: {
                 salesRank: deal.salesRank,
                 isLowestEver: deal.isLowest,
                 isLowest90Days: deal.isLowest90,
+                createdAt: deal.creationDate ? keepaTimeToDate(deal.creationDate).getTime() : undefined,
             };
             return result;
         })
@@ -949,11 +1156,17 @@ export async function browseDeals(options: {
     // Check if there are more deals available (Keepa returns up to 150 deals per page)
     const hasMore = (data.deals?.dr?.length || 0) >= 50;
 
-    return {
+    const result = {
         deals: rawDeals,
         tokensLeft: data.tokensLeft,
         hasMore,
     };
+
+    // Cache the result
+    writeBrowseDealsCache(cacheKey, { ...result, timestamp: Date.now() });
+    console.log(`[browseDeals] Cached ${rawDeals.length} deals`);
+
+    return result;
 }
 
 /**
@@ -973,6 +1186,17 @@ export async function searchProducts(
 
     const { page = 0, stats = 90 } = options;
 
+    // Check search cache first
+    const searchCacheKey = JSON.stringify({ term, page, stats });
+    const cachedSearch = readSearchCache(searchCacheKey);
+    if (cachedSearch) {
+        const ageMin = Math.round((Date.now() - cachedSearch.timestamp) / 60000);
+        console.log(`[searchProducts] Cache hit for "${term}" page ${page} (age: ${ageMin}min)`);
+        return { products: cachedSearch.products, tokensLeft: cachedSearch.tokensLeft };
+    }
+
+    console.log(`[searchProducts] Cache miss for "${term}" page ${page}, fetching from Keepa API`);
+
     const params = new URLSearchParams({
         key: KEEPA_API_KEY,
         domain: AMAZON_DOMAIN_UK.toString(),
@@ -980,7 +1204,7 @@ export async function searchProducts(
         term: term,
         page: page.toString(),
         stats: stats.toString(),
-        history: '0', // Don't include full CSV history to save bandwidth
+        history: '0',
     });
 
     const url = `${KEEPA_API_BASE}/search?${params.toString()}`;
@@ -1004,8 +1228,14 @@ export async function searchProducts(
         .map((product): DealPingProduct | null => {
             const stats = product.stats;
 
-            // Get current Amazon price (index 0) or Buy Box price (index 18)
-            const currentPriceCents = stats?.current?.[CSV_PRICE_INDICES.AMAZON] ?? stats?.current?.[CSV_PRICE_INDICES.BUY_BOX] ?? -1;
+            // Get current price - try multiple sources for better coverage
+            const currentPriceCents =
+                stats?.current?.[CSV_PRICE_INDICES.AMAZON] ??
+                stats?.current?.[CSV_PRICE_INDICES.BUY_BOX] ??
+                stats?.current?.[CSV_PRICE_INDICES.LIGHTNING] ??
+                stats?.current?.[CSV_PRICE_INDICES.NEW_FBA] ??
+                stats?.current?.[CSV_PRICE_INDICES.NEW] ??
+                -1;
             const currentPrice = currentPriceCents > 0 ? keepaPriceToPounds(currentPriceCents) : 0;
 
             if (currentPrice <= 0) return null;
@@ -1046,10 +1276,15 @@ export async function searchProducts(
         })
         .filter((p): p is DealPingProduct => p !== null);
 
-    return {
-        products,
-        tokensLeft: data.tokensLeft,
-    };
+    const searchResult = { products, tokensLeft: data.tokensLeft };
+
+    // Cache the result
+    if (products.length > 0) {
+        writeSearchCache(searchCacheKey, { ...searchResult, timestamp: Date.now() });
+        console.log(`[searchProducts] Cached ${products.length} results for "${term}"`);
+    }
+
+    return searchResult;
 }
 
 /**
@@ -1099,9 +1334,15 @@ export async function getProduct(
     const product = data.products[0];
     const productStats = product.stats;
 
-    // Get current Amazon price
-    const currentPriceCents = productStats?.current?.[CSV_PRICE_INDICES.AMAZON] ?? productStats?.current?.[CSV_PRICE_INDICES.BUY_BOX] ?? -1;
-    const currentPrice = currentPriceCents > 0 ? keepaPriceToPounds(currentPriceCents) : 0;
+    // Get current price - try multiple sources for better coverage
+    const currentPriceCents =
+        productStats?.current?.[CSV_PRICE_INDICES.AMAZON] ??
+        productStats?.current?.[CSV_PRICE_INDICES.BUY_BOX] ??
+        productStats?.current?.[CSV_PRICE_INDICES.LIGHTNING] ??
+        productStats?.current?.[CSV_PRICE_INDICES.NEW_FBA] ??
+        productStats?.current?.[CSV_PRICE_INDICES.NEW] ??
+        -1;
+    let currentPrice = currentPriceCents > 0 ? keepaPriceToPounds(currentPriceCents) : 0;
 
     // Get LIST PRICE (RRP) and 90-day average
     const listPriceCents = productStats?.current?.[CSV_PRICE_INDICES.LIST_PRICE] ?? -1;
@@ -1110,24 +1351,48 @@ export async function getProduct(
     const avg90PriceCents = productStats?.avg90?.[CSV_PRICE_INDICES.AMAZON] ?? -1;
     const avg90Price = avg90PriceCents > 0 ? keepaPriceToPounds(avg90PriceCents) : 0;
 
-    // Use the LOWER of list price or 90-day average as reference (conservative approach)
-    let originalPrice = currentPrice; // Default to no discount
+    // Determine strikethrough price - match what Amazon actually displays
+    let originalPrice = currentPrice;
+    let getProductPriceSource: 'list' | 'avg90' | 'deal' | undefined;
 
     if (listPrice > 0 && listPrice > currentPrice) {
-        originalPrice = listPrice;
-    }
-
-    if (avg90Price > 0 && avg90Price > currentPrice) {
-        // Use whichever is lower to show conservative, accurate discounts
-        if (originalPrice === currentPrice || avg90Price < originalPrice) {
+        if (listPrice <= currentPrice * 3) {
+            originalPrice = listPrice;
+            getProductPriceSource = 'list';
+        } else if (avg90Price > 0 && avg90Price > currentPrice) {
             originalPrice = avg90Price;
+            getProductPriceSource = 'avg90';
         }
+    } else if (avg90Price > 0 && avg90Price > currentPrice) {
+        originalPrice = avg90Price;
+        getProductPriceSource = 'avg90';
     }
 
     // Calculate percent off
-    const percentOff = originalPrice > currentPrice && currentPrice > 0
+    let percentOff = originalPrice > currentPrice && currentPrice > 0
         ? Math.round(((originalPrice - currentPrice) / originalPrice) * 100)
         : 0;
+
+    // Check lightning deals cache for better pricing data
+    let isLightningDeal = false;
+    let percentClaimed: number | undefined;
+    let dealEndTime: number | undefined;
+    let getProductCreatedAt: number | undefined;
+
+    const cachedLightningDeal = getLightningDealFromCache(asin);
+    if (cachedLightningDeal) {
+        // Active lightning deal - always use its pricing as source of truth.
+        // The product API returns the regular Amazon price, not the deal price.
+        isLightningDeal = true;
+        percentClaimed = cachedLightningDeal.percentClaimed;
+        dealEndTime = cachedLightningDeal.dealEndTime;
+        getProductCreatedAt = cachedLightningDeal.createdAt;
+
+        currentPrice = cachedLightningDeal.currentPrice;
+        originalPrice = cachedLightningDeal.originalPrice;
+        percentOff = cachedLightningDeal.percentOff;
+        getProductPriceSource = 'deal';
+    }
 
     return {
         product: {
@@ -1144,6 +1409,11 @@ export async function getProduct(
             category: product.categoryTree?.[0]?.name,
             rating: product.rating ? product.rating / 10 : undefined,
             salesRank: product.salesRankReference,
+            isLightningDeal,
+            percentClaimed,
+            dealEndTime,
+            priceSource: getProductPriceSource,
+            createdAt: getProductCreatedAt,
         },
         tokensLeft: data.tokensLeft,
     };
@@ -1237,7 +1507,19 @@ export async function getProductWithHistory(
     const productStats = rawProduct.stats;
 
     // Build product data
-    const currentPriceCents = productStats?.current?.[CSV_PRICE_INDICES.AMAZON] ?? productStats?.current?.[CSV_PRICE_INDICES.BUY_BOX] ?? -1;
+    // Try multiple price sources in priority order:
+    // 1. Amazon direct price
+    // 2. Buy Box price (most relevant for customers)
+    // 3. Lightning deal price
+    // 4. New FBA price (marketplace sellers fulfilled by Amazon)
+    // 5. New marketplace price
+    const currentPriceCents =
+        productStats?.current?.[CSV_PRICE_INDICES.AMAZON] ??
+        productStats?.current?.[CSV_PRICE_INDICES.BUY_BOX] ??
+        productStats?.current?.[CSV_PRICE_INDICES.LIGHTNING] ??
+        productStats?.current?.[CSV_PRICE_INDICES.NEW_FBA] ??
+        productStats?.current?.[CSV_PRICE_INDICES.NEW] ??
+        -1;
     const currentPrice = currentPriceCents > 0 ? keepaPriceToPounds(currentPriceCents) : 0;
 
     const listPriceCents = productStats?.current?.[CSV_PRICE_INDICES.LIST_PRICE] ?? -1;
@@ -1246,42 +1528,113 @@ export async function getProductWithHistory(
     const avg90PriceCents = productStats?.avg90?.[CSV_PRICE_INDICES.AMAZON] ?? -1;
     const avg90Price = avg90PriceCents > 0 ? keepaPriceToPounds(avg90PriceCents) : 0;
 
+    // Determine strikethrough price - match what Amazon actually displays
+    // Amazon shows LIST_PRICE (RRP) as the "Was" price when available
+    // Only fall back to avg90 if there's no LIST_PRICE
     let originalPrice = currentPrice;
+    let priceSource: 'list' | 'avg90' | 'deal' | undefined;
     if (listPrice > 0 && listPrice > currentPrice) {
-        originalPrice = listPrice;
-    }
-    if (avg90Price > 0 && avg90Price > currentPrice) {
-        if (originalPrice === currentPrice || avg90Price < originalPrice) {
+        // Use LIST_PRICE (RRP) - this is what Amazon shows as "Was" price
+        // Sanity check: if RRP is more than 3x the current price, it's likely stale/wrong
+        if (listPrice <= currentPrice * 3) {
+            originalPrice = listPrice;
+            priceSource = 'list';
+        } else if (avg90Price > 0 && avg90Price > currentPrice) {
             originalPrice = avg90Price;
+            priceSource = 'avg90';
         }
+    } else if (avg90Price > 0 && avg90Price > currentPrice) {
+        // No valid LIST_PRICE - use 90-day average as "Was" price
+        originalPrice = avg90Price;
+        priceSource = 'avg90';
     }
 
     const percentOff = originalPrice > currentPrice && currentPrice > 0
         ? Math.round(((originalPrice - currentPrice) / originalPrice) * 100)
         : 0;
 
+    // If no current price from the product API, check lightning deals cache
+    // Lightning deals have their own pricing that may not appear in stats.current
+    let finalCurrentPrice = currentPrice;
+    let finalOriginalPrice = originalPrice;
+    let finalPercentOff = percentOff;
+    let isLightningDeal = false;
+    let lightningPercentClaimed: number | undefined;
+    let lightningDealEndTime: number | undefined;
+    let lightningCreatedAt: number | undefined;
+    let isLowestEver = false;
+    let isLowest90Days = false;
+
+    const cachedLightningDeal = getLightningDealFromCache(asin);
+
+    if (cachedLightningDeal) {
+        // This is an active lightning deal - always use its pricing
+        // The product API returns the regular Amazon price, but during a lightning deal
+        // the customer pays the deal price. Use lightning deal prices as the source of truth.
+        isLightningDeal = true;
+        lightningPercentClaimed = cachedLightningDeal.percentClaimed;
+        lightningDealEndTime = cachedLightningDeal.dealEndTime;
+        lightningCreatedAt = cachedLightningDeal.createdAt;
+
+        finalCurrentPrice = cachedLightningDeal.currentPrice;
+        finalOriginalPrice = cachedLightningDeal.originalPrice;
+        finalPercentOff = cachedLightningDeal.percentOff;
+        priceSource = 'deal';
+    } else if (finalCurrentPrice <= 0) {
+        // Not a lightning deal and no price - try to extract from CSV history as last resort
+        const csv = rawProduct.csv;
+        if (csv && csv[CSV_PRICE_INDICES.AMAZON]) {
+            const amazonPrices = csv[CSV_PRICE_INDICES.AMAZON];
+            // Get the most recent valid price from history
+            for (let i = amazonPrices.length - 2; i >= 0; i -= 2) {
+                const priceCents = amazonPrices[i + 1];
+                if (priceCents > 0) {
+                    finalCurrentPrice = keepaPriceToPounds(priceCents);
+                    break;
+                }
+            }
+        }
+    }
+
     const product: DealPingProduct = {
         id: rawProduct.asin,
         asin: rawProduct.asin,
         name: rawProduct.title || 'Unknown Product',
         imageUrl: getImageUrl(rawProduct.imagesCSV),
-        currentPrice,
-        originalPrice: Math.round(originalPrice * 100) / 100,
-        percentOff,
+        currentPrice: finalCurrentPrice,
+        originalPrice: Math.round(finalOriginalPrice * 100) / 100,
+        percentOff: finalPercentOff,
         retailer: 'Amazon UK',
-        dealScore: calculateDealScore(percentOff),
+        dealScore: calculateDealScore(finalPercentOff),
         affiliateUrl: generateAffiliateUrl(rawProduct.asin),
         category: rawProduct.categoryTree?.[0]?.name,
         rating: rawProduct.rating ? rawProduct.rating / 10 : undefined,
         salesRank: rawProduct.salesRankReference,
+        isLightningDeal,
+        percentClaimed: lightningPercentClaimed,
+        dealEndTime: lightningDealEndTime,
+        isLowestEver,
+        isLowest90Days,
+        priceSource,
+        createdAt: lightningCreatedAt,
     };
 
     // Build price history data
     let priceHistory: PriceHistoryData | null = null;
     const csv = rawProduct.csv;
 
-    if (csv && csv[CSV_PRICE_INDICES.AMAZON]) {
-        const amazonPrices = csv[CSV_PRICE_INDICES.AMAZON];
+    // Try multiple CSV price sources, picking the first with meaningful data
+    // AMAZON may be empty (only 2 entries = 1 data point) for marketplace products
+    const csvCandidates = [
+        csv?.[CSV_PRICE_INDICES.AMAZON],
+        csv?.[CSV_PRICE_INDICES.BUY_BOX],
+        csv?.[CSV_PRICE_INDICES.NEW],
+        csv?.[CSV_PRICE_INDICES.NEW_FBA],
+    ];
+    const priceCSV = csvCandidates.find(arr => arr && arr.length >= 4) ?? null;
+
+    if (priceCSV) {
+        const amazonPrices = priceCSV;
         const history: PriceHistoryPoint[] = [];
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - historyDays);
@@ -1328,15 +1681,37 @@ export async function getProductWithHistory(
             }
         }
 
-        const averagePrice = priceCount > 0 ? Math.round((priceSum / priceCount) * 100) / 100 : currentPrice;
+        const averagePrice = priceCount > 0 ? Math.round((priceSum / priceCount) * 100) / 100 : finalCurrentPrice;
         history.sort((a, b) => a.timestamp - b.timestamp);
 
-        // Sample data for chart performance
+        // Append today's price so the chart extends to the current date
+        const now = new Date();
+        const lastPoint = history[history.length - 1];
+        const todayPrice = finalCurrentPrice > 0 ? Math.round(finalCurrentPrice * 100) / 100 : (lastPoint?.price ?? 0);
+        if (todayPrice > 0) {
+            const todayFormat: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+            // Only add if the last point isn't already from today
+            if (!lastPoint || now.getTime() - lastPoint.timestamp > 24 * 60 * 60 * 1000) {
+                history.push({
+                    date: now.toLocaleDateString('en-GB', todayFormat),
+                    timestamp: now.getTime(),
+                    price: todayPrice,
+                });
+            }
+        }
+
+        // Sample data for chart performance, always preserving min/max price points
         const maxPoints = Math.min(120, Math.max(60, Math.floor(historyDays / 15)));
         let sampledHistory = history;
         if (history.length > maxPoints) {
             const step = Math.ceil(history.length / maxPoints);
-            sampledHistory = history.filter((_, index) => index % step === 0);
+            // Find indices of the actual min and max price points
+            let minIdx = 0, maxIdx = 0;
+            for (let i = 1; i < history.length; i++) {
+                if (history[i].price < history[minIdx].price) minIdx = i;
+                if (history[i].price > history[maxIdx].price) maxIdx = i;
+            }
+            sampledHistory = history.filter((_, index) => index % step === 0 || index === minIdx || index === maxIdx);
             if (sampledHistory[sampledHistory.length - 1] !== history[history.length - 1]) {
                 sampledHistory.push(history[history.length - 1]);
             }
@@ -1345,7 +1720,7 @@ export async function getProductWithHistory(
         if (sampledHistory.length > 0) {
             priceHistory = {
                 history: sampledHistory,
-                currentPrice: Math.round(currentPrice * 100) / 100,
+                currentPrice: Math.round(finalCurrentPrice * 100) / 100,
                 averagePrice,
                 allTimeLow: allTimeLow === Infinity ? currentPrice : Math.round(allTimeLow * 100) / 100,
                 allTimeHigh: allTimeHigh === 0 ? currentPrice : Math.round(allTimeHigh * 100) / 100,
@@ -1417,14 +1792,23 @@ export async function getPriceHistory(
     const product = apiData.products[0];
     const csv = product.csv;
 
-    if (!csv || !csv[CSV_PRICE_INDICES.AMAZON]) {
+    // Try multiple CSV price sources, picking the first with meaningful data
+    const csvCandidates = [
+        csv?.[CSV_PRICE_INDICES.AMAZON],
+        csv?.[CSV_PRICE_INDICES.BUY_BOX],
+        csv?.[CSV_PRICE_INDICES.NEW],
+        csv?.[CSV_PRICE_INDICES.NEW_FBA],
+    ];
+    const priceCSVData = csvCandidates.find(arr => arr && arr.length >= 4) ?? null;
+
+    if (!priceCSVData) {
         // No price history available
         return { data: null, tokensLeft: apiData.tokensLeft };
     }
 
-    // Parse Amazon price history (index 0)
+    // Parse price history
     // CSV format: [time1, price1, time2, price2, ...]
-    const amazonPrices = csv[CSV_PRICE_INDICES.AMAZON];
+    const amazonPrices = priceCSVData;
     const history: PriceHistoryPoint[] = [];
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - days);
@@ -1475,9 +1859,14 @@ export async function getPriceHistory(
         }
     }
 
-    // Get current price from stats
-    const currentPriceCents = product.stats?.current?.[CSV_PRICE_INDICES.AMAZON] ??
-                              product.stats?.current?.[CSV_PRICE_INDICES.BUY_BOX] ?? -1;
+    // Get current price from stats - try multiple sources
+    const currentPriceCents =
+        product.stats?.current?.[CSV_PRICE_INDICES.AMAZON] ??
+        product.stats?.current?.[CSV_PRICE_INDICES.BUY_BOX] ??
+        product.stats?.current?.[CSV_PRICE_INDICES.LIGHTNING] ??
+        product.stats?.current?.[CSV_PRICE_INDICES.NEW_FBA] ??
+        product.stats?.current?.[CSV_PRICE_INDICES.NEW] ??
+        -1;
     const currentPrice = currentPriceCents > 0 ? keepaPriceToPounds(currentPriceCents) : 0;
 
     // Calculate average price
@@ -1486,9 +1875,24 @@ export async function getPriceHistory(
     // Sort history by timestamp
     history.sort((a, b) => a.timestamp - b.timestamp);
 
+    // Append today's price so the chart extends to the current date
+    const now = new Date();
+    const lastPoint = history[history.length - 1];
+    const todayPrice = currentPrice > 0 ? Math.round(currentPrice * 100) / 100 : (lastPoint?.price ?? 0);
+    if (todayPrice > 0) {
+        const todayFormat: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+        if (!lastPoint || now.getTime() - lastPoint.timestamp > 24 * 60 * 60 * 1000) {
+            history.push({
+                date: now.toLocaleDateString('en-GB', todayFormat),
+                timestamp: now.getTime(),
+                price: todayPrice,
+            });
+        }
+    }
+
     // Sample the data if there are too many points (for chart performance)
     // Use more points for longer histories to maintain detail
-    const maxPoints = Math.min(120, Math.max(60, Math.floor(days / 15))); // Scale with time period
+    const maxPoints = Math.min(120, Math.max(60, Math.floor(days / 15)));
     let sampledHistory = history;
     if (history.length > maxPoints) {
         const step = Math.ceil(history.length / maxPoints);

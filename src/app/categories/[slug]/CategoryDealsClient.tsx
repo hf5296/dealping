@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import ProductCard from "@/components/ProductCard";
+import ProductCardSkeleton from "@/components/ProductCardSkeleton";
 import { DealPingProduct } from "@/lib/keepa";
+
+const VISIBLE_INCREMENT = 20;
 
 interface CategoryDealsClientProps {
     initialDeals: DealPingProduct[];
@@ -18,18 +21,20 @@ export default function CategoryDealsClient({
     categorySlug,
     categoryName,
 }: CategoryDealsClientProps) {
-    const [deals, setDeals] = useState<DealPingProduct[]>(initialDeals);
+    const [allDeals, setAllDeals] = useState<DealPingProduct[]>(initialDeals);
     const [activeFilter, setActiveFilter] = useState<FilterOption>("all");
     const [sortBy, setSortBy] = useState<SortOption>("percentOff");
-    const [page, setPage] = useState(0);
-    const [loading, setLoading] = useState(false);
-    const [hasMore, setHasMore] = useState(initialDeals.length >= 24);
+    const [visibleCount, setVisibleCount] = useState(VISIBLE_INCREMENT);
+    const [apiPage, setApiPage] = useState(0);
+    const [apiHasMore, setApiHasMore] = useState(initialDeals.length >= 50);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const sentinelRef = useRef<HTMLDivElement>(null);
+    const loadingRef = useRef(false);
 
     // Filter and sort deals
     const filteredDeals = useMemo(() => {
-        let result = [...deals];
+        let result = [...allDeals];
 
-        // Apply filter
         switch (activeFilter) {
             case "20off":
                 result = result.filter((d) => d.percentOff >= 20);
@@ -45,7 +50,6 @@ export default function CategoryDealsClient({
                 break;
         }
 
-        // Apply sorting
         switch (sortBy) {
             case "percentOff":
                 result.sort((a, b) => b.percentOff - a.percentOff);
@@ -59,38 +63,95 @@ export default function CategoryDealsClient({
         }
 
         return result;
-    }, [deals, activeFilter, sortBy]);
+    }, [allDeals, activeFilter, sortBy]);
 
-    const loadMore = useCallback(async () => {
-        if (loading) return;
+    const visibleDeals = filteredDeals.slice(0, visibleCount);
+    const hasMoreLocal = visibleCount < filteredDeals.length;
+    const canFetchMore = apiHasMore && !isLoadingMore;
 
-        setLoading(true);
+    // Fetch the next API page when all local data has been revealed
+    const fetchNextPage = useCallback(async () => {
+        if (isLoadingMore || !apiHasMore) return;
+
+        setIsLoadingMore(true);
         try {
-            const nextPage = page + 1;
+            const nextPage = apiPage + 1;
             const response = await fetch(
-                `/api/deals?category=${categorySlug}&page=${nextPage}`
+                `/api/deals?category=${categorySlug}&page=${nextPage}&limit=150`
             );
 
-            if (!response.ok) {
-                throw new Error("Failed to load more deals");
-            }
+            if (!response.ok) throw new Error("Failed to load more deals");
 
             const data = await response.json();
 
             if (data.deals && data.deals.length > 0) {
-                setDeals((prev) => [...prev, ...data.deals]);
-                setPage(nextPage);
-                // Use hasMore from API response, or fall back to checking if we got a full page
-                setHasMore(data.hasMore ?? data.deals.length >= 24);
+                const existingAsins = new Set(allDeals.map((d) => d.asin));
+                const newDeals = data.deals.filter(
+                    (d: DealPingProduct) => !existingAsins.has(d.asin)
+                );
+                if (newDeals.length > 0) {
+                    setAllDeals((prev) => [...prev, ...newDeals]);
+                    setVisibleCount((prev) => prev + VISIBLE_INCREMENT);
+                }
+                setApiPage(nextPage);
+                setApiHasMore(data.hasMore ?? data.deals.length >= 50);
             } else {
-                setHasMore(false);
+                setApiHasMore(false);
             }
         } catch (error) {
             console.error("Error loading more deals:", error);
         } finally {
-            setLoading(false);
+            setIsLoadingMore(false);
+            loadingRef.current = false;
         }
-    }, [page, categorySlug, loading]);
+    }, [apiPage, categorySlug, isLoadingMore, apiHasMore, allDeals]);
+
+    // Reveal local data with a short delay so skeletons are visible
+    const revealLocalBatch = useCallback(() => {
+        setIsLoadingMore(true);
+        setTimeout(() => {
+            setVisibleCount((prev) => prev + VISIBLE_INCREMENT);
+            setIsLoadingMore(false);
+            loadingRef.current = false;
+        }, 1000);
+    }, []);
+
+    // Infinite scroll via IntersectionObserver
+    useEffect(() => {
+        const sentinel = sentinelRef.current;
+        if (!sentinel) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting && !loadingRef.current) {
+                    loadingRef.current = true;
+                    if (hasMoreLocal) {
+                        revealLocalBatch();
+                    } else if (canFetchMore) {
+                        fetchNextPage();
+                    } else {
+                        loadingRef.current = false;
+                    }
+                }
+            },
+            { rootMargin: "200px" }
+        );
+
+        observer.observe(sentinel);
+        return () => observer.disconnect();
+    }, [hasMoreLocal, canFetchMore, fetchNextPage, revealLocalBatch]);
+
+    // Scroll to top on mount
+    useEffect(() => {
+        window.scrollTo(0, 0);
+    }, []);
+
+    // Reset visible count when filter/sort changes
+    useEffect(() => {
+        setVisibleCount(VISIBLE_INCREMENT);
+        setIsLoadingMore(false);
+        loadingRef.current = false;
+    }, [activeFilter, sortBy]);
 
     const filters: { id: FilterOption; label: string }[] = [
         { id: "all", label: "All Deals" },
@@ -137,15 +198,15 @@ export default function CategoryDealsClient({
             {/* Results count */}
             <div className="mb-4">
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Showing {filteredDeals.length} deals
-                    {activeFilter !== "all" && ` (filtered from ${deals.length})`}
+                    Showing {visibleDeals.length} of {filteredDeals.length} deals
+                    {activeFilter !== "all" && ` (filtered from ${allDeals.length})`}
                 </p>
             </div>
 
             {/* Products grid */}
-            {filteredDeals.length > 0 ? (
+            {visibleDeals.length > 0 ? (
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    {filteredDeals.map((deal) => (
+                    {visibleDeals.map((deal) => (
                         <ProductCard
                             key={deal.id}
                             id={deal.id}
@@ -157,13 +218,14 @@ export default function CategoryDealsClient({
                             dealScore={deal.dealScore}
                             percentOff={deal.percentOff}
                             affiliateUrl={deal.affiliateUrl}
+                            createdAt={deal.createdAt}
                         />
                     ))}
                 </div>
             ) : (
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-12 text-center dark:border-gray-700 dark:bg-gray-800">
                     <p className="text-gray-500 dark:text-gray-400">
-                        {deals.length === 0
+                        {allDeals.length === 0
                             ? "No deals found for this category right now. Check back later!"
                             : "No deals match your current filter. Try a different filter."}
                     </p>
@@ -178,49 +240,25 @@ export default function CategoryDealsClient({
                 </div>
             )}
 
-            {/* Load more button */}
-            {hasMore && filteredDeals.length > 0 && activeFilter === "all" && (
-                <div className="mt-8 text-center">
-                    <button
-                        onClick={loadMore}
-                        disabled={loading}
-                        className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-                    >
-                        {loading ? (
-                            <>
-                                <svg
-                                    className="h-4 w-4 animate-spin"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <circle
-                                        className="opacity-25"
-                                        cx="12"
-                                        cy="12"
-                                        r="10"
-                                        stroke="currentColor"
-                                        strokeWidth="4"
-                                    />
-                                    <path
-                                        className="opacity-75"
-                                        fill="currentColor"
-                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                    />
-                                </svg>
-                                Loading...
-                            </>
-                        ) : (
-                            "Load More Deals"
-                        )}
-                    </button>
+            {/* Skeleton loading row */}
+            {isLoadingMore && (
+                <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                        <ProductCardSkeleton key={`skeleton-${i}`} />
+                    ))}
                 </div>
             )}
 
-            {/* Info section */}
-            {deals.length > 0 && !hasMore && (
+            {/* Scroll sentinel */}
+            {(hasMoreLocal || canFetchMore) && visibleDeals.length > 0 && (
+                <div ref={sentinelRef} className="h-1" />
+            )}
+
+            {/* End of results */}
+            {filteredDeals.length > 0 && !hasMoreLocal && !apiHasMore && (
                 <div className="mt-8 text-center">
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                        All {deals.length} deals loaded
+                        All {filteredDeals.length} deals shown
                     </p>
                 </div>
             )}

@@ -3,7 +3,9 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import PriceHistoryLoader from "@/components/PriceHistoryLoader";
 import ShareButtons from "@/components/ShareButtons";
+import SetAlertButton from "@/components/SetAlertButton";
 import { getProductWithHistory } from "@/lib/keepa";
+import { formatTimeAgo } from "@/lib/utils";
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
 
@@ -194,6 +196,19 @@ export default async function ProductPage({ params }: ProductPageProps) {
                                 </span>
                             </div>
                         )}
+                        {/* Rating overlay */}
+                        {product.rating && (
+                            <div className="absolute bottom-4 right-4">
+                                <div className="flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 shadow-sm backdrop-blur-sm dark:bg-gray-800/90">
+                                    <svg className="h-4 w-4 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                    </svg>
+                                    <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                                        {product.rating.toFixed(1)}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Product info */}
@@ -211,34 +226,17 @@ export default async function ProductPage({ params }: ProductPageProps) {
                             {product.name}
                         </h1>
 
-                        {/* Rating */}
-                        {product.rating && (
-                            <div className="mb-4 flex items-center gap-2">
-                                <div className="flex items-center">
-                                    {[1, 2, 3, 4, 5].map((star) => (
-                                        <svg
-                                            key={star}
-                                            className={`h-5 w-5 ${
-                                                star <= Math.round(product.rating!)
-                                                    ? "text-amber-400"
-                                                    : "text-gray-300"
-                                            }`}
-                                            fill="currentColor"
-                                            viewBox="0 0 20 20"
-                                        >
-                                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                                        </svg>
-                                    ))}
-                                </div>
-                                <span className="text-sm text-gray-600 dark:text-gray-400">
-                                    {product.rating.toFixed(1)} stars
+                        <div className="mb-6 flex flex-wrap items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
+                            <span>ASIN: {product.asin}</span>
+                            {product.createdAt && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    Posted {formatTimeAgo(product.createdAt)}
                                 </span>
-                            </div>
-                        )}
-
-                        <p className="mb-6 text-sm text-gray-500 dark:text-gray-400">
-                            ASIN: {product.asin}
-                        </p>
+                            )}
+                        </div>
 
                         {/* Price display */}
                         <div className="mb-6 rounded-xl bg-white p-6 dark:bg-gray-800">
@@ -260,6 +258,27 @@ export default async function ProductPage({ params }: ProductPageProps) {
                                         </p>
                                     )}
                                     <p className="mt-3 text-sm text-gray-500">{scoreConfig.description}</p>
+                                    {product.isLightningDeal && savings > 0 ? (
+                                        <div className="mt-3 rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
+                                            <p className="text-xs text-amber-700 dark:text-amber-400">
+                                                <strong>Note:</strong> The &quot;was&quot; price we show is the regular selling price before the deal started.
+                                                Amazon may advertise a larger discount based on an older or inflated RRP.
+                                                Check the price history chart below to verify.
+                                            </p>
+                                        </div>
+                                    ) : product.priceSource === 'avg90' && savings > 0 ? (
+                                        <div className="mt-3 rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
+                                            <p className="text-xs text-amber-700 dark:text-amber-400">
+                                                <strong>Note:</strong> The &quot;was&quot; price shown here is based on the 90-day average, not a listed RRP.
+                                                Amazon may not display a strikethrough for this product.
+                                                Check the price history chart below to verify.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <p className="mt-2 text-xs text-gray-400">
+                                            Prices may vary. Always verify final price on Amazon.
+                                        </p>
+                                    )}
                                 </>
                             ) : (
                                 <div>
@@ -324,8 +343,18 @@ export default async function ProductPage({ params }: ProductPageProps) {
                             View on Amazon UK
                         </a>
 
+                        {/* Price alert button */}
+                        <div className="mt-3">
+                            <SetAlertButton
+                                asin={product.asin}
+                                productName={product.name}
+                                imageUrl={product.imageUrl}
+                                currentPrice={product.currentPrice}
+                            />
+                        </div>
+
                         {/* Share buttons */}
-                        <div className="mt-6 border-t border-gray-200 pt-6 dark:border-gray-700">
+                        <div className="mt-4">
                             <ShareButtons
                                 title={product.name}
                                 url={`https://dealping.co.uk/product/${product.asin}`}

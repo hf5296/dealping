@@ -12,14 +12,14 @@ interface Alert {
     productId: string;
     productName: string;
     productImage: string | null;
-    category: string;
+    asin: string | null;
     targetPrice: number | null;
     alertOnAnyDrop: boolean;
     notifyEmail: boolean;
     notifyPush: boolean;
     isActive: boolean;
     currentPrice: number | null;
-    retailer: string | null;
+    lastNotified: string | null;
     createdAt: string;
 }
 
@@ -31,7 +31,7 @@ export default function AlertsPage() {
 
     useEffect(() => {
         if (status === "unauthenticated") {
-            router.push("/auth/signin?callbackUrl=/alerts");
+            router.replace("/auth/signin?callbackUrl=/alerts");
         }
     }, [status, router]);
 
@@ -91,7 +91,7 @@ export default function AlertsPage() {
         }
     };
 
-    if (status === "loading" || loading) {
+    if (status === "loading") {
         return (
             <div className="flex min-h-screen items-center justify-center">
                 <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent"></div>
@@ -101,6 +101,18 @@ export default function AlertsPage() {
 
     if (!session) {
         return null;
+    }
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+                <Header />
+                <div className="flex items-center justify-center py-32">
+                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent"></div>
+                </div>
+                <Footer />
+            </div>
+        );
     }
 
     return (
@@ -162,9 +174,6 @@ export default function AlertsPage() {
                                     {/* Product info */}
                                     <div className="flex-1">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-xs font-medium text-gray-400 uppercase">
-                                                {alert.category}
-                                            </span>
                                             {!alert.isActive && (
                                                 <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-700">
                                                     Paused
@@ -172,7 +181,7 @@ export default function AlertsPage() {
                                             )}
                                         </div>
                                         <Link
-                                            href={`/product/${alert.productId}`}
+                                            href={`/product/${alert.asin || alert.productId}`}
                                             className="mt-1 block text-lg font-semibold text-gray-900 hover:text-emerald-500 dark:text-white"
                                         >
                                             {alert.productName}
@@ -204,9 +213,7 @@ export default function AlertsPage() {
                                                 <p className="text-xl font-bold text-emerald-600">
                                                     £{alert.currentPrice.toFixed(2)}
                                                 </p>
-                                                {alert.retailer && (
-                                                    <p className="text-xs text-gray-400">{alert.retailer}</p>
-                                                )}
+                                                <p className="text-xs text-gray-400">Amazon UK</p>
                                             </div>
                                         )}
 

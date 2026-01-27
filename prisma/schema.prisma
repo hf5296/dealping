@@ -83,20 +83,22 @@ model Category {
 
 model Product {
   id          String   @id @default(cuid())
+  asin        String?  @unique  // Amazon ASIN - links to Keepa data
   name        String
   description String?
   imageUrl    String?
-  categoryId  String
+  categoryId  String?  // Optional - not all products have a mapped category
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   // Relations
-  category    Category      @relation(fields: [categoryId], references: [id])
+  category    Category?     @relation(fields: [categoryId], references: [id])
   prices      PriceRecord[]
   alerts      PriceAlert[]
 
   @@index([categoryId])
   @@index([name])
+  @@index([asin])
 }
 
 // ============================================

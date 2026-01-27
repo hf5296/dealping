@@ -1,11 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { useSession, signOut } from "next-auth/react";
 import SearchBar from "./SearchBar";
 
 export default function Header() {
+    const { data: session } = useSession();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [userMenuOpen, setUserMenuOpen] = useState(false);
+    const userMenuRef = useRef<HTMLDivElement>(null);
+
+    // Close user menu on outside click
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+                setUserMenuOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    const userName = session?.user?.name || session?.user?.email?.split("@")[0] || "User";
+    const userInitial = userName.charAt(0).toUpperCase();
 
     return (
         <header className="glass sticky top-0 z-50 border-b border-gray-200/50 dark:border-gray-700/50">
@@ -64,16 +82,69 @@ export default function Header() {
                                     d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
                                 />
                             </svg>
-                            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[10px] font-bold text-white">
-                                3
-                            </span>
                         </Link>
-                        <Link
-                            href="/auth/signin"
-                            className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600"
-                        >
-                            Sign In
-                        </Link>
+
+                        {session?.user ? (
+                            /* User dropdown */
+                            <div className="relative" ref={userMenuRef}>
+                                <button
+                                    onClick={() => setUserMenuOpen(!userMenuOpen)}
+                                    className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+                                >
+                                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-white">
+                                        {userInitial}
+                                    </div>
+                                    <span className="hidden lg:inline">{userName}</span>
+                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </button>
+
+                                {userMenuOpen && (
+                                    <div className="absolute right-0 mt-2 w-48 rounded-xl border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+                                        <Link
+                                            href="/profile"
+                                            onClick={() => setUserMenuOpen(false)}
+                                            className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                                        >
+                                            Profile
+                                        </Link>
+                                        <Link
+                                            href="/alerts"
+                                            onClick={() => setUserMenuOpen(false)}
+                                            className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                                        >
+                                            My Alerts
+                                        </Link>
+                                        <hr className="my-1 border-gray-200 dark:border-gray-700" />
+                                        <button
+                                            onClick={() => {
+                                                setUserMenuOpen(false);
+                                                signOut({ callbackUrl: "/" });
+                                            }}
+                                            className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-gray-100 dark:text-red-400 dark:hover:bg-gray-700"
+                                        >
+                                            Sign Out
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <>
+                                <Link
+                                    href="/auth/signin"
+                                    className="rounded-xl px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+                                >
+                                    Sign In
+                                </Link>
+                                <Link
+                                    href="/auth/signup"
+                                    className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600"
+                                >
+                                    Sign Up
+                                </Link>
+                            </>
+                        )}
                     </nav>
 
                     {/* Mobile menu button */}
@@ -90,9 +161,6 @@ export default function Header() {
                                     d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
                                 />
                             </svg>
-                            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[10px] font-bold text-white">
-                                3
-                            </span>
                         </Link>
                         <button
                             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -142,15 +210,46 @@ export default function Header() {
                             >
                                 Price Alerts
                             </Link>
-                            <div className="mt-2 px-4">
-                                <Link
-                                    href="/auth/signin"
-                                    onClick={() => setMobileMenuOpen(false)}
-                                    className="block w-full rounded-xl bg-emerald-500 py-3 text-center text-base font-semibold text-white hover:bg-emerald-600"
-                                >
-                                    Sign In
-                                </Link>
-                            </div>
+
+                            {session?.user ? (
+                                <>
+                                    <Link
+                                        href="/profile"
+                                        onClick={() => setMobileMenuOpen(false)}
+                                        className="rounded-lg px-4 py-3 text-base font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+                                    >
+                                        Profile
+                                    </Link>
+                                    <div className="mt-2 px-4">
+                                        <button
+                                            onClick={() => {
+                                                setMobileMenuOpen(false);
+                                                signOut({ callbackUrl: "/" });
+                                            }}
+                                            className="block w-full rounded-xl bg-red-100 py-3 text-center text-base font-semibold text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400"
+                                        >
+                                            Sign Out
+                                        </button>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="mt-2 flex gap-2 px-4">
+                                    <Link
+                                        href="/auth/signin"
+                                        onClick={() => setMobileMenuOpen(false)}
+                                        className="block flex-1 rounded-xl border border-gray-200 py-3 text-center text-base font-semibold text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                                    >
+                                        Sign In
+                                    </Link>
+                                    <Link
+                                        href="/auth/signup"
+                                        onClick={() => setMobileMenuOpen(false)}
+                                        className="block flex-1 rounded-xl bg-emerald-500 py-3 text-center text-base font-semibold text-white hover:bg-emerald-600"
+                                    >
+                                        Sign Up
+                                    </Link>
+                                </div>
+                            )}
                         </nav>
                     </div>
                 )}
