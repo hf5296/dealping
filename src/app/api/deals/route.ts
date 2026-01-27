@@ -57,7 +57,6 @@ export async function GET(request: NextRequest) {
             limit: Math.min(limit, 150),
             validateRRP: false,
             // Anti-fake-deal filters:
-            isLowest90: true,
             maxSalesRank: 100000,
             minRating: 35,
         });

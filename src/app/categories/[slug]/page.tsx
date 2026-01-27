@@ -42,8 +42,7 @@ async function getCategoryDeals(categoryId: number): Promise<DealPingProduct[]> 
             dateRange: 0, // All current deals (not just recent price drops)
             limit: 150, // Keepa returns up to 150 per page
             validateRRP: false, // Use Keepa's data directly
-            // Anti-fake-deal filters (slightly relaxed for niche categories):
-            isLowest90: true, // Price must be at 90-day low
+            // Anti-fake-deal filters (relaxed for categories to show more deals):
             maxSalesRank: 200000, // Top 200k (more lenient for niche categories)
             minRating: 35, // At least 3.5 stars
         });

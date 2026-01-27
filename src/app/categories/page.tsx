@@ -33,15 +33,6 @@ export default function CategoriesPage() {
                     ))}
                 </div>
 
-                {/* Stats */}
-                <div className="mt-16 rounded-2xl bg-emerald-500 p-8 text-center text-white">
-                    <h2 className="text-2xl font-bold">
-                        Over 500,000 Products Tracked
-                    </h2>
-                    <p className="mt-2 text-emerald-100">
-                        We track prices from 25+ UK retailers including Amazon, Currys, Argos, Tesco, and more.
-                    </p>
-                </div>
             </main>
 
             <Footer />

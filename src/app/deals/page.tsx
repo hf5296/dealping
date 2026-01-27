@@ -18,7 +18,6 @@ async function getDeals(): Promise<DealPingProduct[]> {
             limit: 150, // Keepa returns up to 150 per page
             validateRRP: false, // Use Keepa's data directly
             // Anti-fake-deal filters:
-            isLowest90: true, // Price must be at 90-day low
             maxSalesRank: 100000, // Only popular products (top 100k)
             minRating: 35, // At least 3.5 stars
         });

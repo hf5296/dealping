@@ -146,27 +146,19 @@ export default async function Home() {
         </section>
 
         {/* Categories */}
-        <section className="border-t border-gray-100 bg-gray-50 py-12 dark:border-gray-800 dark:bg-gray-900 sm:py-16">
+        <section className="border-t border-gray-100 bg-gray-50 py-16 dark:border-gray-800 dark:bg-gray-900 sm:py-24">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  Browse by Category
-                </h2>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Find deals in your favourite categories
-                </p>
-              </div>
-              <a
-                href="/categories"
-                className="text-sm font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
-              >
-                All categories →
-              </a>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                Browse by Category
+              </h2>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Find deals in your favourite categories
+              </p>
             </div>
 
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {categories.slice(0, 8).map((category) => (
+            <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+              {categories.map((category) => (
                 <CategoryCard
                   key={category.id}
                   name={category.name}

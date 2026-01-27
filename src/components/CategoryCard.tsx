@@ -18,26 +18,26 @@ export default function CategoryCard({
     return (
         <Link href={`/categories/${slug}`}>
             <div
-                className="card-hover group relative overflow-hidden rounded-2xl border border-gray-100 bg-white p-6 
+                className="card-hover group relative overflow-hidden rounded-2xl border border-gray-100 bg-white p-8
           dark:border-gray-700 dark:bg-gray-800"
             >
                 {/* Background gradient accent */}
                 <div
-                    className="absolute -right-8 -top-8 h-24 w-24 rounded-full opacity-20 transition-opacity 
+                    className="absolute -right-8 -top-8 h-28 w-28 rounded-full opacity-20 transition-opacity
             group-hover:opacity-30"
                     style={{ backgroundColor: color }}
                 />
 
                 {/* Icon */}
                 <div
-                    className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl text-2xl"
+                    className="mb-5 flex h-16 w-16 items-center justify-center rounded-xl text-3xl"
                     style={{ backgroundColor: `${color}15` }}
                 >
                     {icon}
                 </div>
 
                 {/* Content */}
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
                     {name}
                 </h3>
 
