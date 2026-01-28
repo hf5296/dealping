@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 
 import ProductCard from "@/components/ProductCard";
 import ProductCardSkeleton from "@/components/ProductCardSkeleton";
 import { DealPingProduct } from "@/lib/keepa";
 
-const LOAD_MORE_INCREMENT = 48; // 12 rows of 4 columns
+const VISIBLE_INCREMENT = 20;
 
 const CATEGORY_OPTIONS = [
     { slug: "", label: "All Categories" },
@@ -39,10 +39,12 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
     const [selectedCategory, setSelectedCategory] = useState<string>("");
     const [isCategoryLoading, setIsCategoryLoading] = useState(false);
     const hasPendingChanges = pendingSortBy !== sortBy || pendingMinDiscount !== minDiscount || pendingMaxPrice !== maxPrice;
-    const [visibleCount, setVisibleCount] = useState(LOAD_MORE_INCREMENT);
+    const [visibleCount, setVisibleCount] = useState(VISIBLE_INCREMENT);
     const [apiPage, setApiPage] = useState(0);
     const [apiHasMore, setApiHasMore] = useState(initialDeals.length >= 50);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const sentinelRef = useRef<HTMLDivElement>(null);
+    const loadingRef = useRef(false);
 
     // Filter and sort deals
     const filteredDeals = useMemo(() => {
@@ -77,7 +79,7 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
     // Handle category change - fetch new data from API
     const handleCategoryChange = useCallback(async (slug: string) => {
         setSelectedCategory(slug);
-        setVisibleCount(LOAD_MORE_INCREMENT);
+        setVisibleCount(VISIBLE_INCREMENT);
         setApiPage(0);
         setApiHasMore(true);
 
@@ -124,7 +126,7 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
                 );
                 if (newDeals.length > 0) {
                     setAllDeals((prev) => [...prev, ...newDeals]);
-                    setVisibleCount((prev) => prev + LOAD_MORE_INCREMENT);
+                    setVisibleCount((prev) => prev + VISIBLE_INCREMENT);
                 }
                 setApiPage(nextPage);
                 setApiHasMore(data.hasMore ?? data.deals.length >= 50);
@@ -135,18 +137,45 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
             console.error("Error loading more deals:", error);
         } finally {
             setIsLoadingMore(false);
+            loadingRef.current = false;
         }
     }, [apiPage, isLoadingMore, apiHasMore, allDeals, selectedCategory]);
 
+    // Reveal local data with a short delay so skeletons are visible
+    const revealLocalBatch = useCallback(() => {
+        setIsLoadingMore(true);
+        setTimeout(() => {
+            setVisibleCount((prev) => prev + VISIBLE_INCREMENT);
+            setIsLoadingMore(false);
+            loadingRef.current = false;
+        }, 1000);
+    }, []);
+
+    // Infinite scroll for local data only — API pages require manual "Load More" click
+    useEffect(() => {
+        const sentinel = sentinelRef.current;
+        if (!sentinel) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting && !loadingRef.current && hasMoreLocal) {
+                    loadingRef.current = true;
+                    revealLocalBatch();
+                }
+            },
+            { rootMargin: "200px" }
+        );
+
+        observer.observe(sentinel);
+        return () => observer.disconnect();
+    }, [hasMoreLocal, revealLocalBatch]);
+
     // Reset visible count when filter/sort changes
     useEffect(() => {
-        setVisibleCount(LOAD_MORE_INCREMENT);
+        setVisibleCount(VISIBLE_INCREMENT);
         setIsLoadingMore(false);
+        loadingRef.current = false;
     }, [sortBy, minDiscount, maxPrice]);
-
-    const loadMoreLocal = () => {
-        setVisibleCount((prev) => prev + LOAD_MORE_INCREMENT);
-    };
 
     const clearFilters = () => {
         setMinDiscount(0);
@@ -331,7 +360,7 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
                 </div>
             )}
 
-            {/* Skeleton loading row (API fetch) */}
+            {/* Skeleton loading row */}
             {isLoadingMore && (
                 <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
                     {Array.from({ length: 4 }).map((_, i) => (
@@ -340,11 +369,16 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
                 </div>
             )}
 
-            {/* Load More button */}
-            {(hasMoreLocal || canFetchMore) && visibleDeals.length > 0 && !isLoadingMore && (
+            {/* Scroll sentinel — only for revealing local data */}
+            {hasMoreLocal && visibleDeals.length > 0 && (
+                <div ref={sentinelRef} className="h-1" />
+            )}
+
+            {/* Load More button — only shown when local data exhausted but more API pages available */}
+            {!hasMoreLocal && canFetchMore && visibleDeals.length > 0 && !isLoadingMore && (
                 <div className="mt-8 text-center">
                     <button
-                        onClick={hasMoreLocal ? loadMoreLocal : fetchNextPage}
+                        onClick={fetchNextPage}
                         className="rounded-xl bg-emerald-500 px-8 py-3 text-sm font-semibold text-white hover:bg-emerald-600 transition-colors"
                     >
                         Load More Deals

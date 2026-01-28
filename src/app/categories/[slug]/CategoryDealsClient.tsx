@@ -123,15 +123,9 @@ export default function CategoryDealsClient({
 
         const observer = new IntersectionObserver(
             (entries) => {
-                if (entries[0].isIntersecting && !loadingRef.current) {
+                if (entries[0].isIntersecting && !loadingRef.current && hasMoreLocal) {
                     loadingRef.current = true;
-                    if (hasMoreLocal) {
-                        revealLocalBatch();
-                    } else if (canFetchMore) {
-                        fetchNextPage();
-                    } else {
-                        loadingRef.current = false;
-                    }
+                    revealLocalBatch();
                 }
             },
             { rootMargin: "200px" }
@@ -139,7 +133,7 @@ export default function CategoryDealsClient({
 
         observer.observe(sentinel);
         return () => observer.disconnect();
-    }, [hasMoreLocal, canFetchMore, fetchNextPage, revealLocalBatch]);
+    }, [hasMoreLocal, revealLocalBatch]);
 
     // Scroll to top on mount
     useEffect(() => {
@@ -249,9 +243,22 @@ export default function CategoryDealsClient({
                 </div>
             )}
 
-            {/* Scroll sentinel */}
-            {(hasMoreLocal || canFetchMore) && visibleDeals.length > 0 && (
+            {/* Scroll sentinel (local data only) */}
+            {hasMoreLocal && visibleDeals.length > 0 && (
                 <div ref={sentinelRef} className="h-1" />
+            )}
+
+            {/* Load More button for fetching next API page */}
+            {!hasMoreLocal && canFetchMore && visibleDeals.length > 0 && (
+                <div className="mt-8 text-center">
+                    <button
+                        onClick={fetchNextPage}
+                        disabled={isLoadingMore}
+                        className="rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                        {isLoadingMore ? "Loading..." : "Load More Deals"}
+                    </button>
+                </div>
             )}
 
             {/* End of results */}

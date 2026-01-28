@@ -39,7 +39,7 @@ async function getCategoryDeals(categoryId: number): Promise<DealPingProduct[]> 
             sortBy: 'percentOff',
             hasReviews: true,
             priceType: PRICE_TYPES.AMAZON,
-            dateRange: 0, // All current deals (not just recent price drops)
+            dateRange: 1, // Last 7 days of price changes
             limit: 150, // Keepa returns up to 150 per page
             validateRRP: false, // Use Keepa's data directly
             // Anti-fake-deal filters (relaxed for categories to show more deals):

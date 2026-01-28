@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
         const searchParams = request.nextUrl.searchParams;
 
         // Parse query parameters with NaN protection
-        const page = Math.max(parseInt(searchParams.get('page') || '0', 10) || 0, 0);
+        const page = Math.min(Math.max(parseInt(searchParams.get('page') || '0', 10) || 0, 0), 9); // Max 10 pages (0-9)
         const category = searchParams.get('category');
         const minPercentOff = Math.max(parseInt(searchParams.get('minPercentOff') || '15', 10) || 15, 0);
         const maxPercentOff = Math.min(parseInt(searchParams.get('maxPercentOff') || '100', 10) || 100, 100);
@@ -62,11 +62,11 @@ export async function GET(request: NextRequest) {
             titleSearch: search,
             isLowest,
             priceType: PRICE_TYPES.AMAZON,
-            dateRange: 0, // All current deals (not just recent price drops)
+            dateRange: categoryId ? 1 : 0, // Categories: last 7 days; Hot deals: today only
             limit: Math.min(limit, 150),
             validateRRP: false,
             // Anti-fake-deal filters:
-            maxSalesRank: 100000,
+            maxSalesRank: 200000, // Only popular products (top 200k)
             minRating: 35,
         });
 
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
             deals: limitedDeals,
             total: result.deals.length,
             page,
-            hasMore: result.hasMore && limitedDeals.length >= limit,
+            hasMore: result.hasMore && limitedDeals.length >= limit && page < 9,
             tokensLeft: result.tokensLeft,
         });
     } catch (error) {
