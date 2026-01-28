@@ -12,7 +12,7 @@ interface Product {
     originalPrice: number;
     percentOff: number;
     retailer: string;
-    dealScore: 'amazing' | 'great' | 'good';
+    dealScore: 'amazing' | 'great' | 'good' | null;
     affiliateUrl: string;
     rating?: number;
 }

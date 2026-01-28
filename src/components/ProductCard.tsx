@@ -11,7 +11,7 @@ interface ProductCardProps {
     currentPrice: number;
     originalPrice?: number;
     retailer: string;
-    dealScore?: "amazing" | "great" | "good";
+    dealScore?: "amazing" | "great" | "good" | null;
     percentOff?: number;
     affiliateUrl?: string;
     createdAt?: number;
@@ -24,7 +24,7 @@ export default function ProductCard({
     currentPrice,
     originalPrice,
     retailer,
-    dealScore = "good",
+    dealScore,
     percentOff,
     affiliateUrl,
     createdAt,

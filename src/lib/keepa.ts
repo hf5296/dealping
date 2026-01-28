@@ -400,7 +400,7 @@ export interface DealPingProduct {
     originalPrice: number;
     percentOff: number;
     retailer: string;
-    dealScore: 'amazing' | 'great' | 'good';
+    dealScore: 'amazing' | 'great' | 'good' | null;
     affiliateUrl: string;
     category?: string;
     rating?: number;
@@ -512,10 +512,11 @@ function getDealImageUrl(image: string | number[]): string {
 /**
  * Calculate deal score based on percentage off
  */
-function calculateDealScore(percentOff: number): 'amazing' | 'great' | 'good' {
+function calculateDealScore(percentOff: number): 'amazing' | 'great' | 'good' | null {
+    if (percentOff <= 0) return null;
     if (percentOff >= DEAL_SCORE_THRESHOLDS.AMAZING) return 'amazing';
     if (percentOff >= DEAL_SCORE_THRESHOLDS.GREAT) return 'great';
-    return 'good'; // All deals are at least good
+    return 'good';
 }
 
 /**

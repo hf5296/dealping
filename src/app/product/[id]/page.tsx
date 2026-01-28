@@ -108,7 +108,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
     // If the current price is at or above the 90-day average, this isn't really a deal
     const isAboveAverage = product.avg90Price != null && product.avg90Price > 0 && product.currentPrice >= product.avg90Price;
-    const scoreConfig = isAboveAverage ? null : dealScoreConfig[product.dealScore];
+    const scoreConfig = isAboveAverage || !product.dealScore ? null : dealScoreConfig[product.dealScore];
     const savings = product.originalPrice > product.currentPrice ? product.originalPrice - product.currentPrice : 0;
     const percentOff = product.percentOff;
 
