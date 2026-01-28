@@ -2,7 +2,7 @@ import { MetadataRoute } from "next";
 import { categories } from "@/lib/sampleData";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-    const baseUrl = "https://dealping.co.uk";
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://dealping.co.uk";
 
     // Static pages
     const staticPages: MetadataRoute.Sitemap = [

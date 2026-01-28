@@ -38,24 +38,7 @@ export default async function DealsPage() {
 
             <main className="py-8">
                 <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-                    {/* Page Header */}
-                    <div className="mb-8">
-                        <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                            <span className="relative flex h-2 w-2">
-                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75"></span>
-                                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-600"></span>
-                            </span>
-                            Amazon UK Deals
-                        </div>
-                        <h1 className="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl">
-                            Today's Deals
-                        </h1>
-                        <p className="mt-2 text-gray-500 dark:text-gray-400">
-                            Products at their 90-day lowest price. Always verify final price on Amazon before purchasing.
-                        </p>
-                    </div>
-
-                    {/* Client component handles filtering and sorting */}
+                    {/* Client component handles header, filtering and sorting */}
                     <DealsClient initialDeals={deals} />
                 </div>
             </main>

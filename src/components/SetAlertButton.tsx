@@ -21,7 +21,6 @@ export default function SetAlertButton({
     const router = useRouter();
     const [showForm, setShowForm] = useState(false);
     const [targetPrice, setTargetPrice] = useState("");
-    const [alertOnAnyDrop, setAlertOnAnyDrop] = useState(true);
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState("");
@@ -45,7 +44,7 @@ export default function SetAlertButton({
                     imageUrl,
                     currentPrice,
                     targetPrice: targetPrice ? parseFloat(targetPrice) : null,
-                    alertOnAnyDrop: !targetPrice || alertOnAnyDrop,
+                    alertOnAnyDrop: !targetPrice,
                     notifyEmail: true,
                 }),
             });
@@ -67,11 +66,19 @@ export default function SetAlertButton({
 
     if (success) {
         return (
-            <div className="flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400">
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                Alert set! We&apos;ll email you when the price drops.
+            <div className="rounded-xl bg-emerald-50 px-4 py-3 dark:bg-emerald-900/20">
+                <div className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Alert set! We&apos;ll email you when the price drops.
+                </div>
+                <a
+                    href="/alerts"
+                    className="mt-2 inline-block text-sm font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+                >
+                    Manage your alerts &rarr;
+                </a>
             </div>
         );
     }
@@ -115,7 +122,7 @@ export default function SetAlertButton({
             <div className="space-y-3">
                 <div>
                     <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                        Target price (optional)
+                        Target price
                     </label>
                     <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">£</span>
@@ -129,24 +136,12 @@ export default function SetAlertButton({
                             className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-7 pr-3 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
                         />
                     </div>
-                    <p className="mt-1 text-xs text-gray-500">
-                        {targetPrice
-                            ? `Alert when price drops below £${parseFloat(targetPrice).toFixed(2)}`
-                            : "Leave empty to get alerted on any price drop"}
-                    </p>
+                    {targetPrice && (
+                        <p className="mt-1 text-xs text-gray-500">
+                            Alert when price drops below £{parseFloat(targetPrice).toFixed(2)}
+                        </p>
+                    )}
                 </div>
-
-                {targetPrice && (
-                    <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                        <input
-                            type="checkbox"
-                            checked={alertOnAnyDrop}
-                            onChange={(e) => setAlertOnAnyDrop(e.target.checked)}
-                            className="rounded border-gray-300 text-emerald-500 focus:ring-emerald-500"
-                        />
-                        Also alert on any price drop
-                    </label>
-                )}
 
                 {error && (
                     <p className="text-sm text-red-600">{error}</p>

@@ -7,6 +7,6 @@ export default function robots(): MetadataRoute.Robots {
             allow: "/",
             disallow: ["/api/", "/auth/"],
         },
-        sitemap: "https://dealping.co.uk/sitemap.xml",
+        sitemap: `${process.env.NEXT_PUBLIC_APP_URL || "https://dealping.co.uk"}/sitemap.xml`,
     };
 }

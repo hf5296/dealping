@@ -41,7 +41,8 @@ DealPing is a UK Amazon deals aggregator using the Keepa API to display verified
 
 ### Pages
 - [x] Homepage (`/`) - Lightning Deals only (no browse deals fallback), friendly empty state, enlarged category cards
-- [x] Deals page (`/deals`) - Browse deals with category filter, pending filters with Apply button, Load More every 48 products (revalidates every 5 min)
+- [x] Deals page (`/deals`) - Browse deals with category + time range filters, pending filter pattern (all filters go through Apply button), Load More every 48 products (revalidates every 5 min)
+- [x] Custom 404 page — branded with DealPing styling, dark mode, "Browse Deals" CTA
 - [x] Search page (`/search`) - Keepa product search with pagination, filtering, sorting
 - [x] Product page (`/product/[asin]`) - Product details with price history, disclaimers, alerts, sharing, rating overlay on image
 - [x] Categories page (`/categories`) - Category listing
@@ -54,7 +55,7 @@ DealPing is a UK Amazon deals aggregator using the Keepa API to display verified
 
 ### Components
 - [x] Header with navigation, search, user menu dropdown, mobile hamburger menu
-- [x] Footer (3-column layout, no retailers section)
+- [x] Footer (3-column layout: brand, categories, quick links — all links verified)
 - [x] ProductCard - Deal card with discount badge, deal score, "Posted X ago" badge, affiliate link
 - [x] ProductCardSkeleton - Loading skeleton for product cards
 - [x] SearchBar - With search history (local storage)
@@ -65,7 +66,7 @@ DealPing is a UK Amazon deals aggregator using the Keepa API to display verified
 - [x] PriceHistoryChart - Recharts area chart with stats panel
 - [x] PriceHistoryLoader - Lazy loading wrapper for price history
 - [x] ShareButtons - Social sharing (Twitter, Facebook, WhatsApp, Telegram, Copy)
-- [x] SetAlertButton - Price alert form with target price, "any drop" option, auth redirect
+- [x] SetAlertButton - Price alert form with target price, "any drop" option, auth redirect, "Manage alerts" link on success
 - [x] MobileBottomNav - Sticky bottom navigation for mobile
 - [x] Providers - NextAuth SessionProvider wrapper
 

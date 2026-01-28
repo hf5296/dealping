@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@generated/prisma";
 import { checkRateLimit, rateLimitExceeded } from "@/lib/rateLimit";
 
 // GET /api/alerts - Get user's price alerts
@@ -110,6 +109,14 @@ export async function POST(request: Request) {
             }
         }
 
+        // Validate at least one trigger condition is set
+        if (!targetPrice && !alertOnAnyDrop) {
+            return NextResponse.json(
+                { error: "Please set a target price or enable alert on any drop" },
+                { status: 400 }
+            );
+        }
+
         // Upsert the product by ASIN (avoids race condition with concurrent requests)
         const product = await prisma.product.upsert({
             where: { asin },
@@ -121,7 +128,7 @@ export async function POST(request: Request) {
             },
         });
 
-        // Store initial price record if we have a price
+        // Store initial price record if we have a price (skip if one exists today)
         if (currentPrice && currentPrice > 0) {
             const retailer = await prisma.retailer.upsert({
                 where: { slug: "amazon-uk" },
@@ -134,54 +141,55 @@ export async function POST(request: Request) {
                 },
             });
 
-            await prisma.priceRecord.create({
-                data: {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const existingRecord = await prisma.priceRecord.findFirst({
+                where: {
                     productId: product.id,
                     retailerId: retailer.id,
-                    price: currentPrice,
-                    url: `https://www.amazon.co.uk/dp/${asin}`,
-                    affiliateUrl: `https://www.amazon.co.uk/dp/${asin}?tag=dealping0d-21`,
-                },
-            });
-        }
-
-        // Try to create alert; if unique constraint fires, update the existing one
-        try {
-            const alert = await prisma.priceAlert.create({
-                data: {
-                    userId: session.user.id,
-                    productId: product.id,
-                    targetPrice: targetPrice || null,
-                    alertOnAnyDrop: alertOnAnyDrop,
-                    notifyEmail: notifyEmail,
-                    notifyPush: notifyPush,
+                    recordedAt: { gte: today },
                 },
             });
 
-            return NextResponse.json({ alert, created: true }, { status: 201 });
-        } catch (e: unknown) {
-            // Handle unique constraint violation (alert already exists)
-            if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-                const updatedAlert = await prisma.priceAlert.update({
-                    where: {
-                        userId_productId: {
-                            userId: session.user.id,
-                            productId: product.id,
-                        },
-                    },
+            if (!existingRecord) {
+                await prisma.priceRecord.create({
                     data: {
-                        targetPrice: targetPrice || null,
-                        alertOnAnyDrop: alertOnAnyDrop,
-                        notifyEmail: notifyEmail,
-                        notifyPush: notifyPush,
-                        isActive: true,
+                        productId: product.id,
+                        retailerId: retailer.id,
+                        price: currentPrice,
+                        url: `https://www.amazon.co.uk/dp/${asin}`,
+                        affiliateUrl: `https://www.amazon.co.uk/dp/${asin}?tag=dealping0d-21`,
                     },
                 });
-
-                return NextResponse.json({ alert: updatedAlert, updated: true });
             }
-            throw e;
         }
+
+        // Upsert alert — atomically creates or updates
+        const alert = await prisma.priceAlert.upsert({
+            where: {
+                userId_productId: {
+                    userId: session.user.id,
+                    productId: product.id,
+                },
+            },
+            update: {
+                targetPrice: targetPrice || null,
+                alertOnAnyDrop: alertOnAnyDrop,
+                notifyEmail: notifyEmail,
+                notifyPush: notifyPush,
+                isActive: true,
+            },
+            create: {
+                userId: session.user.id,
+                productId: product.id,
+                targetPrice: targetPrice || null,
+                alertOnAnyDrop: alertOnAnyDrop,
+                notifyEmail: notifyEmail,
+                notifyPush: notifyPush,
+            },
+        });
+
+        return NextResponse.json({ alert }, { status: 201 });
     } catch (error) {
         console.error("Failed to create alert:", error);
         return NextResponse.json(

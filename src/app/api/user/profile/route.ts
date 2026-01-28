@@ -25,7 +25,6 @@ export async function GET() {
                 id: true,
                 name: true,
                 email: true,
-                password: true,
                 createdAt: true,
                 _count: {
                     select: {
@@ -44,13 +43,18 @@ export async function GET() {
             );
         }
 
+        // Check if user has a credentials account (password) without fetching the hash
+        const hasPassword = await prisma.user.count({
+            where: { id: session.user.id, password: { not: null } },
+        }) > 0;
+
         return NextResponse.json({
             id: user.id,
             name: user.name,
             email: user.email,
             createdAt: user.createdAt,
             activeAlerts: user._count.alerts,
-            hasPassword: !!user.password,
+            hasPassword,
         });
     } catch (error) {
         console.error("Failed to fetch profile:", error);

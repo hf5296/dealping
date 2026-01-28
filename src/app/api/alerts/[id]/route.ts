@@ -47,7 +47,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 
         // Validate targetPrice if provided
         if (updates.targetPrice !== undefined && updates.targetPrice !== null) {
-            if (typeof updates.targetPrice !== 'number' || updates.targetPrice <= 0) {
+            if (typeof updates.targetPrice !== 'number' || !Number.isFinite(updates.targetPrice) || updates.targetPrice <= 0) {
                 return NextResponse.json(
                     { error: "Invalid target price" },
                     { status: 400 }

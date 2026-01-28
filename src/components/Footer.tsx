@@ -38,31 +38,36 @@ export default function Footer() {
                             Categories
                         </h3>
                         <ul className="space-y-3">
-                            {["Electronics", "Gaming", "Home & Garden", "Fashion", "Groceries"].map((cat) => (
-                                <li key={cat}>
+                            {[
+                                { name: "Electronics", slug: "electronics" },
+                                { name: "Gaming", slug: "gaming" },
+                                { name: "Home & Garden", slug: "home-garden" },
+                                { name: "Health & Beauty", slug: "health-beauty" },
+                                { name: "Groceries", slug: "groceries" },
+                            ].map((cat) => (
+                                <li key={cat.slug}>
                                     <Link
-                                        href={`/categories/${cat.toLowerCase().replace(/ & /g, "-")}`}
+                                        href={`/categories/${cat.slug}`}
                                         className="text-sm text-gray-500 hover:text-emerald-500 dark:text-gray-400"
                                     >
-                                        {cat}
+                                        {cat.name}
                                     </Link>
                                 </li>
                             ))}
                         </ul>
                     </div>
 
-                    {/* Company */}
+                    {/* Quick Links */}
                     <div>
                         <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-gray-900 dark:text-white">
-                            Company
+                            Quick Links
                         </h3>
                         <ul className="space-y-3">
                             {[
-                                { name: "About Us", href: "/about" },
-                                { name: "How It Works", href: "/how-it-works" },
-                                { name: "Privacy Policy", href: "/privacy" },
-                                { name: "Terms of Service", href: "/terms" },
-                                { name: "Contact", href: "/contact" },
+                                { name: "Hot Deals", href: "/deals" },
+                                { name: "All Categories", href: "/categories" },
+                                { name: "Search Products", href: "/search" },
+                                { name: "Price Alerts", href: "/alerts" },
                             ].map((link) => (
                                 <li key={link.name}>
                                     <Link
@@ -83,7 +88,7 @@ export default function Footer() {
                         © {new Date().getFullYear()} DealPing. All rights reserved.
                     </p>
                     <p className="text-xs text-gray-400">
-                        Prices and availability are subject to change. Affiliate links may earn us commission.
+                        Prices and availability are subject to change.
                     </p>
                 </div>
             </div>

@@ -8,17 +8,17 @@ export default function GlobalError({
     reset: () => void;
 }) {
     return (
-        <html lang="en">
+        <html lang="en" suppressHydrationWarning>
             <body>
-                <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4">
+                <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 dark:bg-gray-900">
                     <div className="text-center">
                         <div className="mb-6 text-6xl">
                             <span role="img" aria-label="Error">💥</span>
                         </div>
-                        <h1 className="mb-4 text-2xl font-bold text-gray-900">
+                        <h1 className="mb-4 text-2xl font-bold text-gray-900 dark:text-white">
                             Something went very wrong
                         </h1>
-                        <p className="mb-8 text-gray-600">
+                        <p className="mb-8 text-gray-600 dark:text-gray-400">
                             A critical error occurred. Please try refreshing the page.
                         </p>
                         <button

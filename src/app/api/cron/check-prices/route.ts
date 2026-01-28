@@ -162,9 +162,7 @@ export async function GET(request: NextRequest) {
                         }
 
                         if (shouldNotify && alert.notifyEmail && alert.user.email) {
-                            const referencePrice = alert.targetPrice && previousPrice
-                                ? Math.max(alert.targetPrice, previousPrice)
-                                : previousPrice || alert.targetPrice || currentPrice;
+                            const referencePrice = previousPrice || alert.targetPrice || currentPrice;
 
                             const percentOff = referencePrice > currentPrice
                                 ? Math.round(((referencePrice - currentPrice) / referencePrice) * 100)

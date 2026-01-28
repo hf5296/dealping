@@ -100,7 +100,18 @@ export default function PriceHistoryChart({
                 break;
         }
 
-        return data.filter((point) => point.timestamp >= cutoffTime);
+        const filtered = data.filter((point) => point.timestamp >= cutoffTime);
+
+        // If only 1 point in range, include the last point before the cutoff
+        // so Recharts can draw a line instead of a single dot
+        if (filtered.length === 1 && cutoffTime > 0) {
+            const pointsBefore = data.filter((point) => point.timestamp < cutoffTime);
+            if (pointsBefore.length > 0) {
+                filtered.unshift(pointsBefore[pointsBefore.length - 1]);
+            }
+        }
+
+        return filtered;
     }, [data, selectedPeriod]);
 
     // Compute stats from the actual data to ensure consistency with chart
@@ -126,7 +137,7 @@ export default function PriceHistoryChart({
             "5Y": 1825,
             "ALL": Infinity,
         };
-        return selectedPeriod !== "ALL" && periodDays[selectedPeriod] > dataAgeInDays;
+        return selectedPeriod !== "ALL" && dataAgeInDays > 0 && periodDays[selectedPeriod] > dataAgeInDays;
     }, [selectedPeriod, dataAgeInDays]);
 
     // Calculate Y-axis domain with nice round numbers

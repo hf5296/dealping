@@ -26,7 +26,7 @@ export default function CategoryDealsClient({
     const [sortBy, setSortBy] = useState<SortOption>("percentOff");
     const [visibleCount, setVisibleCount] = useState(VISIBLE_INCREMENT);
     const [apiPage, setApiPage] = useState(0);
-    const [apiHasMore, setApiHasMore] = useState(initialDeals.length >= 50);
+    const [apiHasMore, setApiHasMore] = useState(initialDeals.length >= 100);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const sentinelRef = useRef<HTMLDivElement>(null);
     const loadingRef = useRef(false);
@@ -94,7 +94,7 @@ export default function CategoryDealsClient({
                     setVisibleCount((prev) => prev + VISIBLE_INCREMENT);
                 }
                 setApiPage(nextPage);
-                setApiHasMore(data.hasMore ?? data.deals.length >= 50);
+                setApiHasMore(data.hasMore ?? data.deals.length >= 100);
             } else {
                 setApiHasMore(false);
             }
@@ -113,7 +113,7 @@ export default function CategoryDealsClient({
             setVisibleCount((prev) => prev + VISIBLE_INCREMENT);
             setIsLoadingMore(false);
             loadingRef.current = false;
-        }, 1000);
+        }, 400 + Math.random() * 600);
     }, []);
 
     // Infinite scroll via IntersectionObserver

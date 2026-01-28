@@ -25,8 +25,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 const email = (credentials.email as string).toLowerCase().trim();
                 const password = credentials.password as string;
 
-                // Rate limit login attempts: 5 per minute per email
-                const rateLimit = checkRateLimit(email, "login", { limit: 5, windowSeconds: 60 });
+                // Rate limit login attempts: 5 per 5 minutes per email
+                const rateLimit = checkRateLimit(email, "login", { limit: 5, windowSeconds: 300 });
                 if (!rateLimit.allowed) {
                     throw new Error("Too many login attempts. Please try again later.");
                 }
@@ -56,7 +56,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     ],
     session: {
         strategy: "jwt",
-        maxAge: 7 * 24 * 60 * 60, // 7 days
+        maxAge: 3 * 24 * 60 * 60, // 3 days
     },
     pages: {
         signIn: "/auth/signin",
@@ -151,10 +151,48 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         async jwt({ token, user }) {
             if (user) {
                 token.id = user.id;
+
+                // On sign-in, snapshot the current passwordChangedAt into the token
+                try {
+                    const dbUser = await prisma.user.findUnique({
+                        where: { id: user.id as string },
+                        select: { passwordChangedAt: true },
+                    });
+                    token.pwChangedAt = dbUser?.passwordChangedAt?.getTime() ?? 0;
+                } catch {
+                    token.pwChangedAt = 0;
+                }
+                token.lastPwCheck = Date.now();
             }
+
+            // Periodically re-check passwordChangedAt (every 5 minutes)
+            const RECHECK_INTERVAL = 5 * 60 * 1000;
+            const lastCheck = (token.lastPwCheck as number) || 0;
+            if (token.id && Date.now() - lastCheck > RECHECK_INTERVAL) {
+                try {
+                    const dbUser = await prisma.user.findUnique({
+                        where: { id: token.id as string },
+                        select: { passwordChangedAt: true },
+                    });
+                    const dbPwChanged = dbUser?.passwordChangedAt?.getTime() ?? 0;
+                    token.lastPwCheck = Date.now();
+
+                    // If password was changed after this token's snapshot, invalidate
+                    if (dbPwChanged > (token.pwChangedAt as number)) {
+                        return { ...token, invalid: true };
+                    }
+                } catch {
+                    // DB unavailable — skip check, don't break the session
+                }
+            }
+
             return token;
         },
         async session({ session, token }) {
+            if (token.invalid) {
+                // Session invalidated due to password change
+                return { ...session, user: undefined } as unknown as typeof session;
+            }
             if (session.user) {
                 session.user.id = token.id as string;
             }

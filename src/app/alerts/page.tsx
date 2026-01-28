@@ -4,8 +4,21 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import SetAlertButton from "@/components/SetAlertButton";
+import { extractAsin } from "@/lib/asin";
+
+interface TrackedProduct {
+    asin: string;
+    name: string;
+    imageUrl: string;
+    currentPrice: number;
+    originalPrice: number;
+    percentOff: number;
+    rating?: number;
+}
 
 interface Alert {
     id: string;
@@ -29,6 +42,12 @@ export default function AlertsPage() {
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    // Track product state
+    const [trackUrl, setTrackUrl] = useState("");
+    const [trackLoading, setTrackLoading] = useState(false);
+    const [trackError, setTrackError] = useState("");
+    const [trackedProduct, setTrackedProduct] = useState<TrackedProduct | null>(null);
 
     useEffect(() => {
         if (status === "unauthenticated") {
@@ -96,6 +115,45 @@ export default function AlertsPage() {
         }
     };
 
+    const handleTrack = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setTrackError("");
+        setTrackedProduct(null);
+
+        const asin = extractAsin(trackUrl);
+        if (!asin) {
+            setTrackError(
+                "Could not find a product ID. Paste a full Amazon UK link (e.g. amazon.co.uk/dp/B0...) or enter a 10-character ASIN."
+            );
+            return;
+        }
+
+        setTrackLoading(true);
+        try {
+            const res = await fetch(`/api/keepa/product/${asin}`);
+            const data = await res.json();
+
+            if (!res.ok || !data.success) {
+                setTrackError(data.error || "Product not found. Please check the URL and try again.");
+                return;
+            }
+
+            setTrackedProduct({
+                asin: data.product.asin || data.product.id,
+                name: data.product.name,
+                imageUrl: data.product.imageUrl,
+                currentPrice: data.product.currentPrice,
+                originalPrice: data.product.originalPrice,
+                percentOff: data.product.percentOff,
+                rating: data.product.rating,
+            });
+        } catch {
+            setTrackError("Something went wrong. Please try again.");
+        } finally {
+            setTrackLoading(false);
+        }
+    };
+
     if (status === "loading") {
         return (
             <div className="flex min-h-screen items-center justify-center">
@@ -135,6 +193,122 @@ export default function AlertsPage() {
                     </p>
                 </div>
 
+                {/* Track a product section */}
+                <div className="mb-8 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+                    <h2 className="mb-1 text-base font-semibold text-gray-900 dark:text-white">
+                        Track Any Product
+                    </h2>
+                    <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+                        Paste an Amazon UK link to track its price and get notified when it drops.
+                    </p>
+
+                    <form onSubmit={handleTrack} className="relative">
+                        <div className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center">
+                            <svg
+                                className="h-4 w-4 text-gray-400"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+                                />
+                            </svg>
+                        </div>
+                        <input
+                            type="text"
+                            value={trackUrl}
+                            onChange={(e) => setTrackUrl(e.target.value)}
+                            placeholder="https://www.amazon.co.uk/dp/B0... or ASIN"
+                            className="w-full rounded-xl border border-gray-300 bg-white py-2.5 pl-10 pr-24 text-sm transition-colors focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
+                        />
+                        <button
+                            type="submit"
+                            disabled={trackLoading || !trackUrl.trim()}
+                            className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-lg bg-emerald-500 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-600 disabled:opacity-50"
+                        >
+                            {trackLoading ? "Looking up..." : "Track"}
+                        </button>
+                    </form>
+
+                    {trackError && (
+                        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+                            {trackError}
+                        </div>
+                    )}
+
+                    {trackLoading && (
+                        <div className="flex items-center justify-center py-8">
+                            <div className="h-6 w-6 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+                        </div>
+                    )}
+
+                    {trackedProduct && !trackLoading && (
+                        <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 dark:border-gray-600 dark:bg-gray-700/50">
+                            <div className="flex flex-col sm:flex-row">
+                                {/* Image */}
+                                <div className="flex items-center justify-center p-4 sm:w-40">
+                                    {trackedProduct.imageUrl ? (
+                                        <Image
+                                            src={trackedProduct.imageUrl}
+                                            alt={trackedProduct.name}
+                                            width={120}
+                                            height={120}
+                                            className="object-contain"
+                                            unoptimized
+                                        />
+                                    ) : (
+                                        <div className="flex h-20 w-20 items-center justify-center rounded-lg bg-gray-200 dark:bg-gray-600">
+                                            <svg className="h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                            </svg>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Details */}
+                                <div className="flex-1 p-4 pt-0 sm:pt-4">
+                                    <h3 className="mb-2 text-sm font-semibold leading-tight text-gray-900 line-clamp-2 dark:text-white">
+                                        {trackedProduct.name}
+                                    </h3>
+                                    <div className="mb-3 flex items-baseline gap-2">
+                                        <span className="text-lg font-bold text-emerald-600">
+                                            £{trackedProduct.currentPrice.toFixed(2)}
+                                        </span>
+                                        {trackedProduct.originalPrice > trackedProduct.currentPrice && (
+                                            <span className="text-sm text-gray-400 line-through">
+                                                £{trackedProduct.originalPrice.toFixed(2)}
+                                            </span>
+                                        )}
+                                        {trackedProduct.percentOff > 0 && (
+                                            <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                                                -{trackedProduct.percentOff}%
+                                            </span>
+                                        )}
+                                    </div>
+                                    <SetAlertButton
+                                        asin={trackedProduct.asin}
+                                        productName={trackedProduct.name}
+                                        imageUrl={trackedProduct.imageUrl}
+                                        currentPrice={trackedProduct.currentPrice}
+                                    />
+                                    <div className="mt-2">
+                                        <Link
+                                            href={`/product/${trackedProduct.asin}`}
+                                            className="text-xs font-medium text-gray-500 hover:text-emerald-600 dark:text-gray-400 dark:hover:text-emerald-400"
+                                        >
+                                            View full details & price history &rarr;
+                                        </Link>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
                 {error && (
                     <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
                         {error}
@@ -161,15 +335,10 @@ export default function AlertsPage() {
                         <h3 className="mb-2 text-lg font-semibold text-gray-900 dark:text-white">
                             No alerts yet
                         </h3>
-                        <p className="mb-4 text-gray-500 dark:text-gray-400">
-                            Browse products and click &quot;Set Price Alert&quot; to get notified of price drops
+                        <p className="text-gray-500 dark:text-gray-400">
+                            Track any Amazon product above or set an alert from a{" "}
+                            <Link href="/deals" className="text-emerald-500 hover:text-emerald-600">deal page</Link>
                         </p>
-                        <Link
-                            href="/"
-                            className="inline-flex rounded-xl bg-emerald-500 px-6 py-3 font-semibold text-white hover:bg-emerald-600"
-                        >
-                            Browse Products
-                        </Link>
                     </div>
                 ) : alerts.length > 0 ? (
                     <div className="space-y-4">
@@ -200,19 +369,18 @@ export default function AlertsPage() {
 
                                         {/* Alert settings */}
                                         <div className="mt-3 flex flex-wrap gap-3 text-sm text-gray-500">
-                                            {alert.targetPrice ? (
+                                            {alert.targetPrice && (
                                                 <span className="flex items-center gap-1">
                                                     <span className="text-emerald-500">£{alert.targetPrice.toFixed(2)}</span>
                                                     target
                                                 </span>
-                                            ) : (
-                                                <span>Alert on any drop</span>
                                             )}
                                             <span className="text-gray-300">•</span>
-                                            <span className="flex items-center gap-1">
-                                                {alert.notifyEmail && "📧"}
-                                                {alert.notifyPush && "🔔"}
-                                            </span>
+                                            {alert.notifyEmail && (
+                                                <span className="flex items-center gap-1">
+                                                    📧 Email
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
 
@@ -260,7 +428,7 @@ export default function AlertsPage() {
                     </h3>
                     <ul className="mt-2 space-y-1 text-sm text-emerald-700 dark:text-emerald-400">
                         <li>• We check prices on Amazon UK regularly</li>
-                        <li>• You&apos;ll get an email or push notification when prices drop</li>
+                        <li>• You&apos;ll get an email notification when prices drop</li>
                         <li>• Set a target price or get alerted on any price drop</li>
                     </ul>
                 </div>

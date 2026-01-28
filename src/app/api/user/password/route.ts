@@ -51,7 +51,7 @@ export async function POST(request: Request) {
 
         if (!user?.password) {
             return NextResponse.json(
-                { error: "No password set for this account" },
+                { error: "Unable to change password" },
                 { status: 400 }
             );
         }
@@ -69,7 +69,10 @@ export async function POST(request: Request) {
 
         await prisma.user.update({
             where: { id: session.user.id },
-            data: { password: hashedPassword },
+            data: {
+                password: hashedPassword,
+                passwordChangedAt: new Date(),
+            },
         });
 
         return NextResponse.json({ message: "Password updated successfully" });

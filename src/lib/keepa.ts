@@ -5,6 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 
 const KEEPA_API_BASE = 'https://api.keepa.com';
 const KEEPA_API_KEY = process.env.KEEPA_API_KEY;
@@ -21,7 +22,7 @@ const SEARCH_CACHE_DIR = path.join(CACHE_DIR, 'search');
 // Cache durations
 const PRODUCT_CACHE_DURATION_MS = 1 * 60 * 60 * 1000; // 1 hour for product data (prices change frequently!)
 const PRICE_HISTORY_CACHE_DURATION_MS = 6 * 60 * 60 * 1000; // 6 hours for price history
-const BROWSE_DEALS_CACHE_DURATION_MS = 10 * 60 * 1000; // 10 minutes for browse deals
+const BROWSE_DEALS_CACHE_DURATION_MS = 30 * 60 * 1000; // 30 minutes for browse deals
 const SEARCH_CACHE_DURATION_MS = 3 * 60 * 60 * 1000; // 3 hours for search results
 
 // Ensure cache directory exists
@@ -101,7 +102,7 @@ function writeProductCache(asin: string, entry: ProductCacheEntry): void {
     try {
         ensureProductsCacheDir();
         const filePath = getProductCachePath(asin);
-        fs.writeFileSync(filePath, JSON.stringify(entry), 'utf-8');
+        fs.writeFileSync(filePath, JSON.stringify(entry), { encoding: 'utf-8', mode: 0o600 });
         console.log(`[ProductCache] Cached product ${asin}`);
     } catch (error) {
         console.error(`[ProductCache] Error writing cache for ${asin}:`, error);
@@ -118,7 +119,7 @@ interface BrowseDealsCacheEntry {
 
 function getBrowseDealsCachePath(key: string): string {
     // Create a safe filename from the cache key
-    const safeKey = Buffer.from(key).toString('base64url').slice(0, 100);
+    const safeKey = crypto.createHash('sha256').update(key).digest('hex').slice(0, 32);
     return path.join(BROWSE_DEALS_CACHE_DIR, `${safeKey}.json`);
 }
 
@@ -145,7 +146,7 @@ function writeBrowseDealsCache(key: string, entry: BrowseDealsCacheEntry): void 
             fs.mkdirSync(BROWSE_DEALS_CACHE_DIR, { recursive: true });
         }
         const filePath = getBrowseDealsCachePath(key);
-        fs.writeFileSync(filePath, JSON.stringify(entry), 'utf-8');
+        fs.writeFileSync(filePath, JSON.stringify(entry), { encoding: 'utf-8', mode: 0o600 });
     } catch (error) {
         console.error('[BrowseDealsCache] Write error:', error);
     }
@@ -159,7 +160,7 @@ interface SearchCacheEntry {
 }
 
 function getSearchCachePath(key: string): string {
-    const safeKey = Buffer.from(key).toString('base64url').slice(0, 100);
+    const safeKey = crypto.createHash('sha256').update(key).digest('hex').slice(0, 32);
     return path.join(SEARCH_CACHE_DIR, `${safeKey}.json`);
 }
 
@@ -186,7 +187,7 @@ function writeSearchCache(key: string, entry: SearchCacheEntry): void {
             fs.mkdirSync(SEARCH_CACHE_DIR, { recursive: true });
         }
         const filePath = getSearchCachePath(key);
-        fs.writeFileSync(filePath, JSON.stringify(entry), 'utf-8');
+        fs.writeFileSync(filePath, JSON.stringify(entry), { encoding: 'utf-8', mode: 0o600 });
     } catch (error) {
         console.error('[SearchCache] Write error:', error);
     }
@@ -521,6 +522,7 @@ function calculateDealScore(percentOff: number): 'amazing' | 'great' | 'good' {
  * Generate affiliate URL from ASIN
  */
 export function generateAffiliateUrl(asin: string): string {
+    if (!/^[A-Z0-9]{10}$/i.test(asin)) return '#';
     return `https://www.amazon.co.uk/dp/${asin}?tag=${AMAZON_ASSOCIATE_TAG}`;
 }
 
@@ -1791,7 +1793,7 @@ export async function getProductWithHistory(
                 history: sampledHistory,
                 currentPrice: Math.round(finalCurrentPrice * 100) / 100,
                 averagePrice,
-                allTimeLow: allTimeLow === Infinity ? currentPrice : Math.round(allTimeLow * 100) / 100,
+                allTimeLow: allTimeLow === Infinity ? (currentPrice || averagePrice) : Math.round(allTimeLow * 100) / 100,
                 allTimeHigh: allTimeHigh === 0 ? currentPrice : Math.round(allTimeHigh * 100) / 100,
                 lowestDate,
                 highestDate,
@@ -1991,7 +1993,7 @@ export async function getPriceHistory(
             history: sampledHistory,
             currentPrice: Math.round(currentPrice * 100) / 100,
             averagePrice,
-            allTimeLow: allTimeLow === Infinity ? currentPrice : Math.round(allTimeLow * 100) / 100,
+            allTimeLow: allTimeLow === Infinity ? (currentPrice || averagePrice) : Math.round(allTimeLow * 100) / 100,
             allTimeHigh: allTimeHigh === 0 ? currentPrice : Math.round(allTimeHigh * 100) / 100,
             lowestDate,
             highestDate,

@@ -9,6 +9,24 @@ import { formatTimeAgo } from "@/lib/utils";
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
 
+// Map Keepa/Amazon category names to app category slug + display name
+const CATEGORY_NAME_MAP: Record<string, { slug: string; name: string }> = {
+    "Electronics & Photo": { slug: "electronics", name: "Electronics" },
+    "Computers & Accessories": { slug: "electronics", name: "Electronics" },
+    "Home & Kitchen": { slug: "home-garden", name: "Home & Garden" },
+    "Garden & Outdoors": { slug: "home-garden", name: "Home & Garden" },
+    "Health & Personal Care": { slug: "health-beauty", name: "Health & Beauty" },
+    "Beauty": { slug: "health-beauty", name: "Health & Beauty" },
+    "Grocery": { slug: "groceries", name: "Groceries" },
+    "Toys & Games": { slug: "baby-kids", name: "Baby & Kids" },
+    "Baby Products": { slug: "baby-kids", name: "Baby & Kids" },
+"Video Games": { slug: "gaming", name: "Gaming" },
+    "PC & Video Games": { slug: "gaming", name: "Gaming" },
+    "Stationery & Office Supplies": { slug: "stationery", name: "Stationery" },
+    "Food & Drink": { slug: "food-drink", name: "Food & Drink" },
+    "Clothing": { slug: "health-beauty", name: "Health & Beauty" },
+};
+
 interface ProductPageProps {
     params: Promise<{ id: string }>;
 }
@@ -91,7 +109,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
     // If the current price is at or above the 90-day average, this isn't really a deal
     const isAboveAverage = product.avg90Price != null && product.avg90Price > 0 && product.currentPrice >= product.avg90Price;
     const scoreConfig = isAboveAverage ? null : dealScoreConfig[product.dealScore];
-    const savings = product.originalPrice - product.currentPrice;
+    const savings = product.originalPrice > product.currentPrice ? product.originalPrice - product.currentPrice : 0;
     const percentOff = product.percentOff;
 
     // JSON-LD structured data for SEO
@@ -133,7 +151,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
             {/* JSON-LD Structured Data */}
             <script
                 type="application/ld+json"
-                dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }}
             />
             <Header />
 
@@ -152,17 +170,28 @@ export default async function ProductPage({ params }: ProductPageProps) {
                         <li className="text-gray-400">/</li>
                         <li>
                             <a
-                                href="/deals"
+                                href="/categories"
                                 className="text-gray-500 hover:text-emerald-500 dark:text-gray-400"
                             >
-                                Deals
+                                Categories
                             </a>
                         </li>
                         {product.category && (
                             <>
                                 <li className="text-gray-400">/</li>
-                                <li className="text-gray-500 dark:text-gray-400">
-                                    {product.category}
+                                <li>
+                                    {CATEGORY_NAME_MAP[product.category] ? (
+                                        <a
+                                            href={`/categories/${CATEGORY_NAME_MAP[product.category].slug}`}
+                                            className="text-gray-500 hover:text-emerald-500 dark:text-gray-400"
+                                        >
+                                            {CATEGORY_NAME_MAP[product.category].name}
+                                        </a>
+                                    ) : (
+                                        <span className="text-gray-500 dark:text-gray-400">
+                                            {product.category}
+                                        </span>
+                                    )}
                                 </li>
                             </>
                         )}
@@ -280,7 +309,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
                                         <div className="mt-3 rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
                                             <p className="text-xs text-amber-700 dark:text-amber-400">
                                                 <strong>Note:</strong> The &quot;was&quot; price shown here is based on the 90-day average, not a listed RRP.
-                                                Amazon may not display a strikethrough for this product.
+                                                This is because we have calculated that Amazon may not display a strikethrough price for this product.
                                                 Check the price history chart below to verify.
                                             </p>
                                         </div>

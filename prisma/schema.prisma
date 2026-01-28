@@ -20,9 +20,10 @@ model User {
   email         String    @unique
   emailVerified DateTime?
   image         String?
-  password      String?   // For credentials auth
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  password          String?   // For credentials auth
+  passwordChangedAt DateTime? // Tracks when password was last changed (for session invalidation)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   // Relations
   accounts      Account[]

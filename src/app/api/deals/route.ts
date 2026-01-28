@@ -49,6 +49,8 @@ export async function GET(request: NextRequest) {
         };
 
         const categoryId = category ? categoryMap[category] : undefined;
+        const rawDateRange = parseInt(searchParams.get('dateRange') || '', 10);
+        const dateRange = [0, 1].includes(rawDateRange) ? rawDateRange : (categoryId ? 1 : 0);
 
         // browseDeals has its own file-based cache (10 min), so no need for in-memory cache here
         const result = await browseDeals({
@@ -62,7 +64,7 @@ export async function GET(request: NextRequest) {
             titleSearch: search,
             isLowest,
             priceType: PRICE_TYPES.AMAZON,
-            dateRange: categoryId ? 1 : 0, // Categories: last 7 days; Hot deals: today only
+            dateRange,
             limit: Math.min(limit, 150),
             validateRRP: false,
             // Anti-fake-deal filters:

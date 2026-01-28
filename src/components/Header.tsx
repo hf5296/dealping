@@ -52,7 +52,7 @@ export default function Header() {
                     </Link>
 
                     {/* Search bar - hidden on mobile, shown on larger screens */}
-                    <div className="hidden flex-1 max-w-xl mx-8 lg:block">
+                    <div className="hidden flex-1 max-w-xl mx-8 md:block">
                         <SearchBar placeholder="Search deals on Amazon UK..." />
                     </div>
 
@@ -167,7 +167,7 @@ export default function Header() {
                 </div>
 
                 {/* Mobile search - shown only on mobile */}
-                <div className="pb-3 lg:hidden">
+                <div className="pb-3 md:hidden">
                     <SearchBar placeholder="Search products..." />
                 </div>
 

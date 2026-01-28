@@ -32,16 +32,19 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
     const [sortBy, setSortBy] = useState<SortOption>("percentOff");
     const [minDiscount, setMinDiscount] = useState<number>(0);
     const [maxPrice, setMaxPrice] = useState<number>(0);
+    const [appliedCategory, setAppliedCategory] = useState<string>("");
+    const [appliedDateRange, setAppliedDateRange] = useState<string>("0");
     // Pending filters (user selections before clicking Apply)
     const [pendingSortBy, setPendingSortBy] = useState<SortOption>("percentOff");
     const [pendingMinDiscount, setPendingMinDiscount] = useState<number>(0);
     const [pendingMaxPrice, setPendingMaxPrice] = useState<number>(0);
-    const [selectedCategory, setSelectedCategory] = useState<string>("");
-    const [isCategoryLoading, setIsCategoryLoading] = useState(false);
-    const hasPendingChanges = pendingSortBy !== sortBy || pendingMinDiscount !== minDiscount || pendingMaxPrice !== maxPrice;
+    const [pendingCategory, setPendingCategory] = useState<string>("");
+    const [pendingDateRange, setPendingDateRange] = useState<string>("0");
+    const [isFilterLoading, setIsFilterLoading] = useState(false);
+    const hasPendingChanges = pendingSortBy !== sortBy || pendingMinDiscount !== minDiscount || pendingMaxPrice !== maxPrice || pendingCategory !== appliedCategory || pendingDateRange !== appliedDateRange;
     const [visibleCount, setVisibleCount] = useState(VISIBLE_INCREMENT);
     const [apiPage, setApiPage] = useState(0);
-    const [apiHasMore, setApiHasMore] = useState(initialDeals.length >= 50);
+    const [apiHasMore, setApiHasMore] = useState(initialDeals.length >= 100);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const sentinelRef = useRef<HTMLDivElement>(null);
     const loadingRef = useRef(false);
@@ -76,34 +79,54 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
     const hasMoreLocal = visibleCount < filteredDeals.length;
     const canFetchMore = apiHasMore && !isLoadingMore;
 
-    // Handle category change - fetch new data from API
-    const handleCategoryChange = useCallback(async (slug: string) => {
-        setSelectedCategory(slug);
+    // Apply all pending filters
+    const applyFilters = useCallback(async () => {
+        const newCategory = pendingCategory;
+        const newDateRange = pendingDateRange;
+        const needsApiFetch = newCategory !== appliedCategory || newDateRange !== appliedDateRange;
+
+        // Apply local filters immediately
+        setSortBy(pendingSortBy);
+        setMinDiscount(pendingMinDiscount);
+        setMaxPrice(pendingMaxPrice);
+        setAppliedCategory(newCategory);
+        setAppliedDateRange(newDateRange);
+
+        if (!needsApiFetch) return;
+
+        // API filters changed — fetch new data
         setVisibleCount(VISIBLE_INCREMENT);
         setApiPage(0);
         setApiHasMore(true);
 
-        if (!slug) {
-            // Back to "All" — use initial data
+        if (!newCategory && newDateRange === "0") {
+            // "All Categories" + "Today" — use initial SSR data
             setAllDeals(initialDeals);
-            setApiHasMore(initialDeals.length >= 50);
+            setApiHasMore(initialDeals.length >= 100);
+            loadingRef.current = true;
+            setTimeout(() => { loadingRef.current = false; }, 400);
             return;
         }
 
-        setIsCategoryLoading(true);
+        setIsFilterLoading(true);
+        loadingRef.current = true;
         try {
-            const response = await fetch(`/api/deals?category=${slug}&limit=150`);
+            const categoryParam = newCategory ? `&category=${newCategory}` : "";
+            const response = await fetch(`/api/deals?dateRange=${newDateRange}${categoryParam}&limit=150`);
             if (response.ok) {
                 const data = await response.json();
                 setAllDeals(data.deals || []);
                 setApiHasMore(data.hasMore ?? false);
             }
         } catch (error) {
-            console.error("Error fetching category deals:", error);
+            console.error("Error fetching deals:", error);
         } finally {
-            setIsCategoryLoading(false);
+            setIsFilterLoading(false);
+            // Prevent the IntersectionObserver from immediately firing
+            // after the skeleton hides and the sentinel becomes visible
+            setTimeout(() => { loadingRef.current = false; }, 400);
         }
-    }, [initialDeals]);
+    }, [initialDeals, pendingSortBy, pendingMinDiscount, pendingMaxPrice, pendingCategory, pendingDateRange, appliedCategory, appliedDateRange]);
 
     // Fetch the next API page when all local data has been revealed
     const fetchNextPage = useCallback(async () => {
@@ -112,8 +135,8 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
         setIsLoadingMore(true);
         try {
             const nextPage = apiPage + 1;
-            const categoryParam = selectedCategory ? `&category=${selectedCategory}` : "";
-            const response = await fetch(`/api/deals?page=${nextPage}&limit=150${categoryParam}`);
+            const categoryParam = appliedCategory ? `&category=${appliedCategory}` : "";
+            const response = await fetch(`/api/deals?page=${nextPage}&limit=150&dateRange=${appliedDateRange}${categoryParam}`);
 
             if (!response.ok) throw new Error("Failed to load more deals");
 
@@ -129,7 +152,7 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
                     setVisibleCount((prev) => prev + VISIBLE_INCREMENT);
                 }
                 setApiPage(nextPage);
-                setApiHasMore(data.hasMore ?? data.deals.length >= 50);
+                setApiHasMore(data.hasMore ?? data.deals.length >= 100);
             } else {
                 setApiHasMore(false);
             }
@@ -139,7 +162,7 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
             setIsLoadingMore(false);
             loadingRef.current = false;
         }
-    }, [apiPage, isLoadingMore, apiHasMore, allDeals, selectedCategory]);
+    }, [apiPage, isLoadingMore, apiHasMore, allDeals, appliedCategory, appliedDateRange]);
 
     // Reveal local data with a short delay so skeletons are visible
     const revealLocalBatch = useCallback(() => {
@@ -148,7 +171,7 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
             setVisibleCount((prev) => prev + VISIBLE_INCREMENT);
             setIsLoadingMore(false);
             loadingRef.current = false;
-        }, 1000);
+        }, 400 + Math.random() * 600);
     }, []);
 
     // Infinite scroll for local data only — API pages require manual "Load More" click
@@ -184,15 +207,41 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
         setPendingMinDiscount(0);
         setPendingMaxPrice(0);
         setPendingSortBy("percentOff");
-        if (selectedCategory) {
-            handleCategoryChange("");
+        setPendingCategory("");
+        setPendingDateRange("0");
+        const needsRefetch = appliedCategory !== "" || appliedDateRange !== "0";
+        setAppliedCategory("");
+        setAppliedDateRange("0");
+        if (needsRefetch) {
+            // Reset to initial SSR data
+            setAllDeals(initialDeals);
+            setApiHasMore(initialDeals.length >= 100);
+            setVisibleCount(VISIBLE_INCREMENT);
+            setApiPage(0);
         }
     };
 
-    const hasActiveFilters = minDiscount > 0 || maxPrice > 0 || selectedCategory !== "";
+    const hasActiveFilters = minDiscount > 0 || maxPrice > 0 || appliedCategory !== "" || appliedDateRange !== "0";
 
     return (
         <>
+            {/* Page Header */}
+            <div className="mb-8">
+                <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                    <span className="relative flex h-2 w-2">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75"></span>
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-600"></span>
+                    </span>
+                    Amazon UK Deals
+                </div>
+                <h1 className="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl">
+                    {appliedDateRange === "0" ? "Today's Deals" : "This Week's Deals"}
+                </h1>
+                <p className="mt-2 text-gray-500 dark:text-gray-400">
+                    Products at their 90-day lowest price. Always verify final price on Amazon before purchasing.
+                </p>
+            </div>
+
             {/* Filters Bar */}
             <div className="mb-6 flex flex-wrap items-center gap-4 rounded-xl bg-white p-4 shadow-sm dark:bg-gray-800">
                 {/* Deal count */}
@@ -207,15 +256,28 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
 
                 {/* Filters */}
                 <div className="flex flex-wrap items-center gap-3">
+                    {/* Time Range Filter */}
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="dateRange" className="text-sm text-gray-500">Time:</label>
+                        <select
+                            id="dateRange"
+                            value={pendingDateRange}
+                            onChange={(e) => setPendingDateRange(e.target.value)}
+                            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                        >
+                            <option value="0">Today</option>
+                            <option value="1">Last 7 Days</option>
+                        </select>
+                    </div>
+
                     {/* Category Filter */}
                     <div className="flex items-center gap-2">
                         <label htmlFor="category" className="text-sm text-gray-500">Category:</label>
                         <select
                             id="category"
-                            value={selectedCategory}
-                            onChange={(e) => handleCategoryChange(e.target.value)}
-                            disabled={isCategoryLoading}
-                            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm disabled:opacity-50 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                            value={pendingCategory}
+                            onChange={(e) => setPendingCategory(e.target.value)}
+                            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                         >
                             {CATEGORY_OPTIONS.map((cat) => (
                                 <option key={cat.slug} value={cat.slug}>
@@ -276,12 +338,8 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
 
                     {/* Apply Button */}
                     <button
-                        onClick={() => {
-                            setSortBy(pendingSortBy);
-                            setMinDiscount(pendingMinDiscount);
-                            setMaxPrice(pendingMaxPrice);
-                        }}
-                        disabled={!hasPendingChanges}
+                        onClick={applyFilters}
+                        disabled={!hasPendingChanges || isFilterLoading}
                         className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition-colors ${
                             hasPendingChanges
                                 ? "bg-emerald-500 text-white hover:bg-emerald-600"
@@ -304,7 +362,7 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
             </div>
 
             {/* Deals Grid */}
-            {isCategoryLoading ? (
+            {isFilterLoading ? (
                 <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
                     {Array.from({ length: 8 }).map((_, i) => (
                         <ProductCardSkeleton key={`cat-skeleton-${i}`} />
