@@ -1,54 +1,67 @@
 # Future Updates
 
-## Feature Ideas
+## Remaining Features
 
-### Categories
-- [ ] Add more categories (current: Electronics, Gaming, Home & Garden, Health & Beauty, Groceries, Fashion, Toys, Sports, Baby, Automotive, Pet Supplies, DIY)
-- [ ] Sub-categories for large categories (e.g. Electronics → Laptops, Headphones, TVs)
+### Medium Priority
+- [ ] **PWA Support** - Add to home screen, offline mode, push notifications
+  - Would need a service worker and manifest.json
+  - Consider using `next-pwa` package
 
-### Product Tracking
-- [ ] Support Amazon short links (amzn.eu/d/..., a.co/d/...)
-- [ ] Wishlist / saved products (track without setting a price alert)
-- [ ] Price history comparison across multiple products
-
-### Alerts
-- [ ] Push notifications (browser/PWA)
-- [ ] Alert frequency settings (instant, daily digest, weekly digest)
-- [ ] Alert when product becomes a lightning deal
-
-### User Experience
-- [ ] PWA support (add to home screen, offline)
-- [ ] Browser extension for price checking while browsing Amazon
-- [ ] Dark/light mode toggle in header (currently follows system)
-
-### Data & Analytics
-- [ ] Popular tracked products section
-- [ ] Price drop leaderboard (biggest drops this week)
-- [ ] Deal history (expired deals archive)
+### Low Priority
+- [ ] **Browser Extension** - Chrome/Firefox extension for checking prices while browsing Amazon
+- [ ] **RSS Feed** - `/feed.xml` endpoint for deals so users can subscribe in RSS readers
 
 ---
 
-## Marketing
+## Deployment Tasks
 
-- [ ] SEO blog (deal guides, "best X under £50" articles)
-- [ ] Social media accounts (Twitter/X, Instagram, TikTok)
-- [ ] Reddit presence (r/UKDeals, r/AmazonUK)
-- [ ] Email newsletter (weekly top deals digest)
-- [ ] Referral program (share DealPing, earn something?)
-- [ ] Google Ads for key terms ("amazon uk deals", "price tracker uk")
+### Cron Jobs (Not Yet Configured)
+Set up scheduled tasks to keep data fresh:
+
+```bash
+# Refresh lightning deals daily at midnight
+0 0 * * * curl -s -H "Authorization: Bearer YOUR_CRON_SECRET" https://your-domain.com/api/cron/refresh-deals
+
+# Check alert prices every 6 hours (1 token per unique ASIN)
+0 */6 * * * curl -s -H "Authorization: Bearer YOUR_CRON_SECRET" https://your-domain.com/api/cron/check-prices
+```
+
+Options for running cron jobs:
+1. **GCP Cloud Scheduler** - If hosting on GCP
+2. **Vercel Cron** - If using Vercel (add to vercel.json)
+3. **External service** - cron-job.org, EasyCron, etc.
+4. **Server crontab** - If you have SSH access to a server
+
+### Monitoring & Logging
+- [ ] Set up error tracking (Sentry, LogRocket, etc.)
+- [ ] Set up uptime monitoring (UptimeRobot, Better Uptime, etc.)
+- [ ] Configure log aggregation for debugging production issues
 
 ---
 
-## Technical Debt
+## Token Budget Reference
 
-- [ ] Set up monitoring/logging (Sentry, UptimeRobot)
-- [ ] RSS feed for deals
-- [ ] Automated backups for .env and deployment config
-- [ ] CI/CD pipeline (GitHub Actions → auto deploy on push)
-- [ ] Rate limiting per IP on public API routes
+Daily Keepa token budget: ~30,000 tokens (refills at 20 tokens/minute)
+
+| Endpoint | Cost | Cache Duration |
+|----------|------|----------------|
+| Lightning Deals | 500 tokens/call | 4 hours |
+| Browse Deals | 5 tokens/150 deals | 30 minutes |
+| Product | 1-2 tokens/ASIN | 1 hour |
+| Search | 10 tokens/page | 3 hours |
+| Price Check (Cron) | 1 token/ASIN | On demand |
+
+**Estimated daily usage:** ~5,000 tokens (well within budget)
 
 ---
 
-## Notes
+## Ideas for Future Features
 
-Add ideas here as they come up. Mark with [x] when done.
+- [ ] Deal notifications via email digest (daily/weekly best deals)
+- [ ] Price drop percentage customization per alert
+- [ ] Wishlist/favorites feature
+- [ ] Deal sharing with friends
+- [ ] Price comparison with other retailers
+- [ ] Historical price charts on category pages
+- [ ] "Similar deals" recommendations
+- [ ] User reviews/comments on deals
