@@ -28,6 +28,7 @@ export default function AlertsPage() {
     const router = useRouter();
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         if (status === "unauthenticated") {
@@ -43,13 +44,17 @@ export default function AlertsPage() {
 
     const fetchAlerts = async () => {
         try {
+            setError(null);
             const res = await fetch("/api/alerts");
             if (res.ok) {
                 const data = await res.json();
                 setAlerts(data);
+            } else {
+                setError("Failed to load your alerts. Please try refreshing the page.");
             }
-        } catch (error) {
-            console.error("Failed to fetch alerts:", error);
+        } catch (err) {
+            console.error("Failed to fetch alerts:", err);
+            setError("Failed to load your alerts. Please check your connection and try again.");
         } finally {
             setLoading(false);
         }
@@ -130,7 +135,13 @@ export default function AlertsPage() {
                     </p>
                 </div>
 
-                {alerts.length === 0 ? (
+                {error && (
+                    <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+                        {error}
+                    </div>
+                )}
+
+                {alerts.length === 0 && !error ? (
                     <div className="rounded-2xl border border-gray-200 bg-white py-16 text-center dark:border-gray-700 dark:bg-gray-800">
                         <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30">
                             <svg
@@ -160,7 +171,7 @@ export default function AlertsPage() {
                             Browse Products
                         </Link>
                     </div>
-                ) : (
+                ) : alerts.length > 0 ? (
                     <div className="space-y-4">
                         {alerts.map((alert) => (
                             <div
@@ -240,7 +251,7 @@ export default function AlertsPage() {
                             </div>
                         ))}
                     </div>
-                )}
+                ) : null}
 
                 {/* Tips section */}
                 <div className="mt-8 rounded-2xl bg-emerald-50 p-6 dark:bg-emerald-900/20">
@@ -248,7 +259,7 @@ export default function AlertsPage() {
                         💡 How alerts work
                     </h3>
                     <ul className="mt-2 space-y-1 text-sm text-emerald-700 dark:text-emerald-400">
-                        <li>• We check prices across all UK retailers daily</li>
+                        <li>• We check prices on Amazon UK regularly</li>
                         <li>• You&apos;ll get an email or push notification when prices drop</li>
                         <li>• Set a target price or get alerted on any price drop</li>
                     </ul>

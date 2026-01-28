@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
     providers: [
@@ -21,8 +22,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                     return null;
                 }
 
-                const email = credentials.email as string;
+                const email = (credentials.email as string).toLowerCase().trim();
                 const password = credentials.password as string;
+
+                // Rate limit login attempts: 5 per minute per email
+                const rateLimit = checkRateLimit(email, "login", { limit: 5, windowSeconds: 60 });
+                if (!rateLimit.allowed) {
+                    throw new Error("Too many login attempts. Please try again later.");
+                }
 
                 const user = await prisma.user.findUnique({
                     where: { email },
@@ -49,6 +56,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     ],
     session: {
         strategy: "jwt",
+        maxAge: 7 * 24 * 60 * 60, // 7 days
     },
     pages: {
         signIn: "/auth/signin",

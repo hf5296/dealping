@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { checkRateLimit, getClientIp, rateLimitExceeded } from "@/lib/rateLimit";
 
 // GET /api/products - List all products with their latest prices
 export async function GET(request: Request) {
+    const ip = getClientIp(request);
+    const rl = checkRateLimit(ip, "products", { limit: 30, windowSeconds: 60 });
+    if (!rl.allowed) return rateLimitExceeded(rl);
+
     try {
         const { searchParams } = new URL(request.url);
         const category = searchParams.get("category");
-        const limit = parseInt(searchParams.get("limit") || "20");
-        const page = parseInt(searchParams.get("page") || "1");
+        const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "20") || 20, 1), 100);
+        const page = Math.max(parseInt(searchParams.get("page") || "1") || 1, 1);
 
         const where = category
             ? { category: { slug: category } }

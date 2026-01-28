@@ -2,11 +2,12 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "./generated/prisma"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 // ============================================
@@ -92,7 +93,7 @@ model Product {
   updatedAt   DateTime @updatedAt
 
   // Relations
-  category    Category?     @relation(fields: [categoryId], references: [id])
+  category    Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   prices      PriceRecord[]
   alerts      PriceAlert[]
 
@@ -132,7 +133,7 @@ model PriceRecord {
 
   // Relations
   product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  retailer Retailer @relation(fields: [retailerId], references: [id])
+  retailer Retailer @relation(fields: [retailerId], references: [id], onDelete: Cascade)
 
   @@index([productId, recordedAt])
   @@index([retailerId])

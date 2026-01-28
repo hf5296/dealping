@@ -53,7 +53,7 @@ export default function Header() {
 
                     {/* Search bar - hidden on mobile, shown on larger screens */}
                     <div className="hidden flex-1 max-w-xl mx-8 lg:block">
-                        <SearchBar placeholder="Search products across UK retailers..." />
+                        <SearchBar placeholder="Search deals on Amazon UK..." />
                     </div>
 
                     {/* Desktop Navigation */}

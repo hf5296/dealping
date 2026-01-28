@@ -28,7 +28,7 @@ export default function Footer() {
                             </span>
                         </Link>
                         <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-                            Find the best prices across UK retailers. Track prices, get alerts, and never overpay again.
+                            Find the best deals on Amazon UK. Track prices, get alerts, and never overpay again.
                         </p>
                     </div>
 

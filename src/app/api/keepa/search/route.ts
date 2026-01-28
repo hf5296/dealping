@@ -1,19 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { searchProducts } from '@/lib/keepa';
+import { checkRateLimit, getClientIp, rateLimitExceeded } from '@/lib/rateLimit';
 
 // Simple in-memory cache for search results
 const searchCache = new Map<string, { data: unknown; timestamp: number }>();
 const CACHE_DURATION_MS = 60 * 60 * 1000; // 1 hour (Keepa's same-request caching)
 
 export async function GET(request: NextRequest) {
+    const ip = getClientIp(request);
+    const rl = checkRateLimit(ip, 'keepa-search', { limit: 10, windowSeconds: 60 });
+    if (!rl.allowed) return rateLimitExceeded(rl);
+
     try {
         const searchParams = request.nextUrl.searchParams;
         const query = searchParams.get('q');
         const page = parseInt(searchParams.get('page') || '0', 10);
 
-        if (!query) {
+        if (!query || query.length > 200) {
             return NextResponse.json(
-                { success: false, error: 'Search query is required', products: [] },
+                { success: false, error: 'Search query is required (max 200 characters)', products: [] },
                 { status: 400 }
             );
         }
@@ -61,7 +66,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json(
             {
                 success: false,
-                error: error instanceof Error ? error.message : 'Failed to search products',
+                error: 'Failed to search products',
                 products: [],
             },
             { status: 500 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { checkRateLimit, getClientIp, rateLimitExceeded } from "@/lib/rateLimit";
 
 interface RouteParams {
     params: Promise<{ id: string }>;
@@ -7,6 +8,10 @@ interface RouteParams {
 
 // GET /api/products/[id] - Get single product with full price history
 export async function GET(request: Request, { params }: RouteParams) {
+    const ip = getClientIp(request);
+    const rl = checkRateLimit(ip, "product-detail", { limit: 30, windowSeconds: 60 });
+    if (!rl.allowed) return rateLimitExceeded(rl);
+
     try {
         const { id } = await params;
 
@@ -32,14 +37,18 @@ export async function GET(request: Request, { params }: RouteParams) {
 
         // Get all prices for this product to calculate stats
         const allPrices = product.prices.map((p) => p.price);
-        const currentLowestPrice = Math.min(...allPrices);
-        const allTimeHigh = Math.max(...allPrices);
-        const allTimeLow = Math.min(...allPrices);
-        const averagePrice = allPrices.reduce((sum, p) => sum + p, 0) / allPrices.length;
+        const currentLowestPrice = allPrices.length > 0 ? Math.min(...allPrices) : 0;
+        const allTimeHigh = allPrices.length > 0 ? Math.max(...allPrices) : 0;
+        const allTimeLow = allPrices.length > 0 ? Math.min(...allPrices) : 0;
+        const averagePrice = allPrices.length > 0
+            ? allPrices.reduce((sum, p) => sum + p, 0) / allPrices.length
+            : 0;
 
         // Calculate deal score
         let dealScore: "good" | "average" | "bad" = "average";
-        const percentFromAverage = ((averagePrice - currentLowestPrice) / averagePrice) * 100;
+        const percentFromAverage = averagePrice > 0
+            ? ((averagePrice - currentLowestPrice) / averagePrice) * 100
+            : 0;
         if (percentFromAverage > 10) dealScore = "good";
         else if (percentFromAverage < -5) dealScore = "bad";
 

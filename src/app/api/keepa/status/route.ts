@@ -1,16 +1,29 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getTokenStatus } from '@/lib/keepa';
+import { auth } from '@/auth';
+import { checkRateLimit, rateLimitExceeded } from '@/lib/rateLimit';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+    // Require authentication to prevent public API quota monitoring
+    const session = await auth();
+    if (!session?.user?.id) {
+        return NextResponse.json(
+            { error: 'You must be signed in' },
+            { status: 401 }
+        );
+    }
+
+    const rl = checkRateLimit(session.user.id, 'keepa-status', { limit: 10, windowSeconds: 60 });
+    if (!rl.allowed) return rateLimitExceeded(rl);
+
     try {
         const status = await getTokenStatus();
 
         return NextResponse.json({
             success: true,
-            ...status,
-            // Calculate approximate daily capacity
+            tokensLeft: status.tokensLeft,
+            refillRate: status.refillRate,
             dailyCapacity: status.refillRate * 60 * 24,
-            // % of tokens currently available (assuming 1200 max bucket for 20 tokens/min)
             percentAvailable: Math.round((status.tokensLeft / 1200) * 100),
         });
     } catch (error) {
@@ -18,7 +31,7 @@ export async function GET() {
         return NextResponse.json(
             {
                 success: false,
-                error: error instanceof Error ? error.message : 'Failed to get token status',
+                error: 'Failed to get token status',
             },
             { status: 500 }
         );

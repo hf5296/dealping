@@ -59,7 +59,7 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
 const dealScoreConfig = {
     amazing: {
         label: "Amazing Deal",
-        description: "This is an exceptional price - one of the best we've seen!",
+        description: "This price is significantly below its historical average.",
         className: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
     },
     great: {
@@ -88,7 +88,9 @@ export default async function ProductPage({ params }: ProductPageProps) {
         notFound();
     }
 
-    const scoreConfig = dealScoreConfig[product.dealScore];
+    // If the current price is at or above the 90-day average, this isn't really a deal
+    const isAboveAverage = product.avg90Price != null && product.avg90Price > 0 && product.currentPrice >= product.avg90Price;
+    const scoreConfig = isAboveAverage ? null : dealScoreConfig[product.dealScore];
     const savings = product.originalPrice - product.currentPrice;
     const percentOff = product.percentOff;
 
@@ -214,13 +216,15 @@ export default async function ProductPage({ params }: ProductPageProps) {
                     {/* Product info */}
                     <div>
                         {/* Deal score badge */}
-                        <div className="mb-4">
-                            <span
-                                className={`inline-flex items-center rounded-full px-4 py-1.5 text-sm font-semibold ${scoreConfig.className}`}
-                            >
-                                {scoreConfig.label}
-                            </span>
-                        </div>
+                        {scoreConfig && (
+                            <div className="mb-4">
+                                <span
+                                    className={`inline-flex items-center rounded-full px-4 py-1.5 text-sm font-semibold ${scoreConfig.className}`}
+                                >
+                                    {scoreConfig.label}
+                                </span>
+                            </div>
+                        )}
 
                         <h1 className="mb-4 text-2xl font-bold text-gray-900 dark:text-white sm:text-3xl">
                             {product.name}
@@ -246,18 +250,24 @@ export default async function ProductPage({ params }: ProductPageProps) {
                                         <span className="text-4xl font-bold text-emerald-600">
                                             £{product.currentPrice.toFixed(2)}
                                         </span>
-                                        {product.originalPrice > product.currentPrice && (
+                                        {product.originalPrice > product.currentPrice && !isAboveAverage && (
                                             <span className="text-xl font-medium text-red-500 line-through">
                                                 £{product.originalPrice.toFixed(2)}
                                             </span>
                                         )}
                                     </div>
-                                    {savings > 0 && (
+                                    {savings > 0 && !isAboveAverage && (
                                         <p className="mt-2 text-sm font-medium text-emerald-600">
                                             You save £{savings.toFixed(2)} ({percentOff}%)
                                         </p>
                                     )}
-                                    <p className="mt-3 text-sm text-gray-500">{scoreConfig.description}</p>
+                                    {isAboveAverage ? (
+                                        <p className="mt-3 text-sm text-gray-500">
+                                            We were unable to verify if this is a deal. Please check the price history chart below.
+                                        </p>
+                                    ) : scoreConfig ? (
+                                        <p className="mt-3 text-sm text-gray-500">{scoreConfig.description}</p>
+                                    ) : null}
                                     {product.isLightningDeal && savings > 0 ? (
                                         <div className="mt-3 rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
                                             <p className="text-xs text-amber-700 dark:text-amber-400">
@@ -271,6 +281,14 @@ export default async function ProductPage({ params }: ProductPageProps) {
                                             <p className="text-xs text-amber-700 dark:text-amber-400">
                                                 <strong>Note:</strong> The &quot;was&quot; price shown here is based on the 90-day average, not a listed RRP.
                                                 Amazon may not display a strikethrough for this product.
+                                                Check the price history chart below to verify.
+                                            </p>
+                                        </div>
+                                    ) : product.priceSource === 'list' && savings > 0 ? (
+                                        <div className="mt-3 rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
+                                            <p className="text-xs text-amber-700 dark:text-amber-400">
+                                                <strong>Note:</strong> The &quot;was&quot; price is the manufacturer&apos;s list price (RRP).
+                                                Amazon may not display this as a strikethrough.
                                                 Check the price history chart below to verify.
                                             </p>
                                         </div>

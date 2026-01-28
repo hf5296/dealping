@@ -65,6 +65,7 @@ export default function ProductCard({
             {/* Product Image - links to product detail page */}
             <Link
                 href={productPageUrl}
+                aria-label={`View ${name}`}
                 className="relative block aspect-square overflow-hidden bg-gray-100 dark:bg-gray-700"
             >
                 <Image
@@ -73,7 +74,6 @@ export default function ProductCard({
                     width={400}
                     height={400}
                     className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                    unoptimized
                 />
                 {/* Posted time badge */}
                 {createdAt && (
@@ -117,6 +117,7 @@ export default function ProductCard({
                     {/* View Details button - goes to product page */}
                     <Link
                         href={productPageUrl}
+                        aria-label={`View details for ${name}`}
                         className="flex-1 rounded-lg bg-gray-100 py-2 text-center text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
                     >
                         Details
@@ -128,6 +129,7 @@ export default function ProductCard({
                             href={affiliateUrl}
                             target="_blank"
                             rel="noopener noreferrer sponsored"
+                            aria-label={`Buy ${name} on ${retailer}`}
                             className="flex-1 rounded-lg bg-emerald-600 py-2 text-center text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
                         >
                             Buy Now

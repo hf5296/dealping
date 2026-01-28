@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { checkRateLimit, rateLimitExceeded } from "@/lib/rateLimit";
 
 interface RouteParams {
     params: Promise<{ id: string }>;
@@ -18,6 +19,10 @@ export async function PATCH(request: Request, { params }: RouteParams) {
                 { status: 401 }
             );
         }
+
+        // Rate limit: 10 req/min for PATCH
+        const rl = checkRateLimit(session.user.id, "alerts-patch", { limit: 10, windowSeconds: 60 });
+        if (!rl.allowed) return rateLimitExceeded(rl);
 
         // Verify ownership
         const existingAlert = await prisma.priceAlert.findUnique({
@@ -40,15 +45,27 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 
         const updates = await request.json();
 
+        // Validate targetPrice if provided
+        if (updates.targetPrice !== undefined && updates.targetPrice !== null) {
+            if (typeof updates.targetPrice !== 'number' || updates.targetPrice <= 0) {
+                return NextResponse.json(
+                    { error: "Invalid target price" },
+                    { status: 400 }
+                );
+            }
+        }
+
+        // Whitelist allowed fields
+        const data: Record<string, unknown> = {};
+        if (updates.targetPrice !== undefined) data.targetPrice = updates.targetPrice;
+        if (typeof updates.alertOnAnyDrop === 'boolean') data.alertOnAnyDrop = updates.alertOnAnyDrop;
+        if (typeof updates.notifyEmail === 'boolean') data.notifyEmail = updates.notifyEmail;
+        if (typeof updates.notifyPush === 'boolean') data.notifyPush = updates.notifyPush;
+        if (typeof updates.isActive === 'boolean') data.isActive = updates.isActive;
+
         const updatedAlert = await prisma.priceAlert.update({
             where: { id },
-            data: {
-                targetPrice: updates.targetPrice,
-                alertOnAnyDrop: updates.alertOnAnyDrop,
-                notifyEmail: updates.notifyEmail,
-                notifyPush: updates.notifyPush,
-                isActive: updates.isActive,
-            },
+            data,
         });
 
         return NextResponse.json(updatedAlert);
@@ -73,6 +90,10 @@ export async function DELETE(request: Request, { params }: RouteParams) {
                 { status: 401 }
             );
         }
+
+        // Rate limit: 10 req/min for DELETE
+        const rl = checkRateLimit(session.user.id, "alerts-delete", { limit: 10, windowSeconds: 60 });
+        if (!rl.allowed) return rateLimitExceeded(rl);
 
         // Verify ownership
         const existingAlert = await prisma.priceAlert.findUnique({

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@generated/prisma";
+import { checkRateLimit, rateLimitExceeded } from "@/lib/rateLimit";
 
 // GET /api/alerts - Get user's price alerts
 export async function GET() {
@@ -13,6 +15,10 @@ export async function GET() {
                 { status: 401 }
             );
         }
+
+        // Rate limit: 30 req/min for GET
+        const rl = checkRateLimit(session.user.id, "alerts-get", { limit: 30, windowSeconds: 60 });
+        if (!rl.allowed) return rateLimitExceeded(rl);
 
         const alerts = await prisma.priceAlert.findMany({
             where: { userId: session.user.id },
@@ -71,6 +77,10 @@ export async function POST(request: Request) {
             );
         }
 
+        // Rate limit: 10 req/min for POST
+        const rl = checkRateLimit(session.user.id, "alerts-post", { limit: 10, windowSeconds: 60 });
+        if (!rl.allowed) return rateLimitExceeded(rl);
+
         const body = await request.json();
         const {
             asin,
@@ -90,83 +100,88 @@ export async function POST(request: Request) {
             );
         }
 
-        // Find or create the product by ASIN
-        let product = await prisma.product.findUnique({
-            where: { asin },
-        });
-
-        if (!product) {
-            product = await prisma.product.create({
-                data: {
-                    asin,
-                    name: productName || "Unknown Product",
-                    imageUrl: imageUrl || null,
-                },
-            });
-
-            // Store initial price record if we have a price
-            if (currentPrice && currentPrice > 0) {
-                // Ensure Amazon UK retailer exists
-                const retailer = await prisma.retailer.upsert({
-                    where: { slug: "amazon-uk" },
-                    update: {},
-                    create: {
-                        name: "Amazon UK",
-                        slug: "amazon-uk",
-                        affiliateNetwork: "amazon",
-                        affiliateId: "findadeal0a-21",
-                    },
-                });
-
-                await prisma.priceRecord.create({
-                    data: {
-                        productId: product.id,
-                        retailerId: retailer.id,
-                        price: currentPrice,
-                        url: `https://www.amazon.co.uk/dp/${asin}`,
-                        affiliateUrl: `https://www.amazon.co.uk/dp/${asin}?tag=findadeal0a-21`,
-                    },
-                });
+        // Validate targetPrice if provided
+        if (targetPrice !== undefined && targetPrice !== null) {
+            if (typeof targetPrice !== 'number' || !Number.isFinite(targetPrice) || targetPrice <= 0) {
+                return NextResponse.json(
+                    { error: "Invalid target price" },
+                    { status: 400 }
+                );
             }
         }
 
-        // Check if alert already exists for this user/product
-        const existingAlert = await prisma.priceAlert.findUnique({
-            where: {
-                userId_productId: {
-                    userId: session.user.id,
-                    productId: product.id,
-                },
+        // Upsert the product by ASIN (avoids race condition with concurrent requests)
+        const product = await prisma.product.upsert({
+            where: { asin },
+            update: {},
+            create: {
+                asin,
+                name: productName || "Unknown Product",
+                imageUrl: imageUrl || null,
             },
         });
 
-        if (existingAlert) {
-            const updatedAlert = await prisma.priceAlert.update({
-                where: { id: existingAlert.id },
+        // Store initial price record if we have a price
+        if (currentPrice && currentPrice > 0) {
+            const retailer = await prisma.retailer.upsert({
+                where: { slug: "amazon-uk" },
+                update: {},
+                create: {
+                    name: "Amazon UK",
+                    slug: "amazon-uk",
+                    affiliateNetwork: "amazon",
+                    affiliateId: "dealping0d-21",
+                },
+            });
+
+            await prisma.priceRecord.create({
                 data: {
+                    productId: product.id,
+                    retailerId: retailer.id,
+                    price: currentPrice,
+                    url: `https://www.amazon.co.uk/dp/${asin}`,
+                    affiliateUrl: `https://www.amazon.co.uk/dp/${asin}?tag=dealping0d-21`,
+                },
+            });
+        }
+
+        // Try to create alert; if unique constraint fires, update the existing one
+        try {
+            const alert = await prisma.priceAlert.create({
+                data: {
+                    userId: session.user.id,
+                    productId: product.id,
                     targetPrice: targetPrice || null,
                     alertOnAnyDrop: alertOnAnyDrop,
                     notifyEmail: notifyEmail,
                     notifyPush: notifyPush,
-                    isActive: true,
                 },
             });
 
-            return NextResponse.json({ alert: updatedAlert, updated: true });
+            return NextResponse.json({ alert, created: true }, { status: 201 });
+        } catch (e: unknown) {
+            // Handle unique constraint violation (alert already exists)
+            if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+                const updatedAlert = await prisma.priceAlert.update({
+                    where: {
+                        userId_productId: {
+                            userId: session.user.id,
+                            productId: product.id,
+                        },
+                    },
+                    data: {
+                        targetPrice: targetPrice || null,
+                        alertOnAnyDrop: alertOnAnyDrop,
+                        notifyEmail: notifyEmail,
+                        notifyPush: notifyPush,
+                        isActive: true,
+                    },
+                });
+
+                return NextResponse.json({ alert: updatedAlert, updated: true });
+            }
+            throw e;
         }
-
-        const alert = await prisma.priceAlert.create({
-            data: {
-                userId: session.user.id,
-                productId: product.id,
-                targetPrice: targetPrice || null,
-                alertOnAnyDrop: alertOnAnyDrop,
-                notifyEmail: notifyEmail,
-                notifyPush: notifyPush,
-            },
-        });
-
-        return NextResponse.json({ alert, created: true }, { status: 201 });
     } catch (error) {
         console.error("Failed to create alert:", error);
         return NextResponse.json(

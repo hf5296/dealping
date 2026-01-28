@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 
 interface SearchBarProps {
     placeholder?: string;
@@ -57,6 +58,7 @@ export default function SearchBar({
     size = "default",
     initialQuery = "",
 }: SearchBarProps) {
+    const router = useRouter();
     const [query, setQuery] = useState(initialQuery);
     const [showHistory, setShowHistory] = useState(false);
     const [history, setHistory] = useState<string[]>([]);
@@ -81,19 +83,23 @@ export default function SearchBar({
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (query.trim()) {
-            saveToHistory(query.trim());
-            setShowHistory(false);
-            // Use window.location for full page reload to fetch fresh server data
-            window.location.href = `/search?q=${encodeURIComponent(query.trim())}`;
-        }
+        const trimmed = query.trim();
+        if (!trimmed) return;
+
+        // Don't re-navigate if already on the same search query
+        const currentQuery = new URLSearchParams(window.location.search).get("q") || "";
+        if (trimmed.toLowerCase() === currentQuery.toLowerCase()) return;
+
+        saveToHistory(trimmed);
+        setShowHistory(false);
+        router.push(`/search?q=${encodeURIComponent(trimmed)}`);
     };
 
     const handleHistoryClick = (item: string) => {
         setQuery(item);
         saveToHistory(item);
         setShowHistory(false);
-        window.location.href = `/search?q=${encodeURIComponent(item)}`;
+        router.push(`/search?q=${encodeURIComponent(item)}`);
     };
 
     const handleRemoveHistory = (e: React.MouseEvent, item: string) => {
@@ -179,8 +185,8 @@ export default function SearchBar({
                         </button>
                     </div>
                     <ul>
-                        {filteredHistory.map((item, index) => (
-                            <li key={index}>
+                        {filteredHistory.map((item) => (
+                            <li key={item}>
                                 <div
                                     role="button"
                                     tabIndex={0}

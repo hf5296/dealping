@@ -1,21 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { browseDeals, UK_CATEGORIES, PRICE_TYPES } from '@/lib/keepa';
+import { checkRateLimit, getClientIp, rateLimitExceeded } from '@/lib/rateLimit';
 
 export async function GET(request: NextRequest) {
+    const ip = getClientIp(request);
+    const rl = checkRateLimit(ip, 'deals', { limit: 20, windowSeconds: 60 });
+    if (!rl.allowed) return rateLimitExceeded(rl);
+
     try {
         const searchParams = request.nextUrl.searchParams;
 
-        // Parse query parameters
-        const page = parseInt(searchParams.get('page') || '0', 10);
+        // Parse query parameters with NaN protection
+        const page = Math.max(parseInt(searchParams.get('page') || '0', 10) || 0, 0);
         const category = searchParams.get('category');
-        const minPercentOff = parseInt(searchParams.get('minPercentOff') || '15', 10);
-        const maxPercentOff = parseInt(searchParams.get('maxPercentOff') || '100', 10);
-        const minPrice = searchParams.get('minPrice') ? parseFloat(searchParams.get('minPrice')!) : undefined;
-        const maxPrice = searchParams.get('maxPrice') ? parseFloat(searchParams.get('maxPrice')!) : undefined;
-        const sortBy = (searchParams.get('sortBy') as 'newest' | 'percentOff' | 'salesRank') || 'percentOff';
+        const minPercentOff = Math.max(parseInt(searchParams.get('minPercentOff') || '15', 10) || 15, 0);
+        const maxPercentOff = Math.min(parseInt(searchParams.get('maxPercentOff') || '100', 10) || 100, 100);
+        const rawMinPrice = searchParams.get('minPrice') ? parseFloat(searchParams.get('minPrice')!) : undefined;
+        const rawMaxPrice = searchParams.get('maxPrice') ? parseFloat(searchParams.get('maxPrice')!) : undefined;
+        const minPrice = rawMinPrice !== undefined && Number.isFinite(rawMinPrice) && rawMinPrice >= 0 ? rawMinPrice : undefined;
+        const maxPrice = rawMaxPrice !== undefined && Number.isFinite(rawMaxPrice) && rawMaxPrice > 0 ? rawMaxPrice : undefined;
+        const validSortOptions = ['newest', 'percentOff', 'salesRank'] as const;
+        const rawSort = searchParams.get('sortBy');
+        const sortBy = (validSortOptions.includes(rawSort as typeof validSortOptions[number]) ? rawSort : 'percentOff') as typeof validSortOptions[number];
         const search = searchParams.get('search') || undefined;
         const isLowest = searchParams.get('isLowest') === 'true';
-        const limit = parseInt(searchParams.get('limit') || '50', 10);
+        const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '50', 10) || 50, 1), 150);
 
         // Map category slug to Keepa category ID
         const categoryMap: Record<string, number> = {
@@ -77,7 +86,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json(
             {
                 success: false,
-                error: error instanceof Error ? error.message : 'Failed to fetch deals',
+                error: 'Failed to fetch deals',
                 deals: [],
                 hasMore: false,
             },

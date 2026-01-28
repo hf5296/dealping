@@ -9,7 +9,7 @@ import * as path from 'path';
 const KEEPA_API_BASE = 'https://api.keepa.com';
 const KEEPA_API_KEY = process.env.KEEPA_API_KEY;
 const AMAZON_DOMAIN_UK = 2; // Amazon UK domain ID
-const AMAZON_ASSOCIATE_TAG = 'findadeal0a-21';
+const AMAZON_ASSOCIATE_TAG = 'dealping0d-21';
 
 // File-based cache directory (persists across server restarts)
 const CACHE_DIR = path.join(process.cwd(), '.cache');
@@ -22,7 +22,7 @@ const SEARCH_CACHE_DIR = path.join(CACHE_DIR, 'search');
 const PRODUCT_CACHE_DURATION_MS = 1 * 60 * 60 * 1000; // 1 hour for product data (prices change frequently!)
 const PRICE_HISTORY_CACHE_DURATION_MS = 6 * 60 * 60 * 1000; // 6 hours for price history
 const BROWSE_DEALS_CACHE_DURATION_MS = 10 * 60 * 1000; // 10 minutes for browse deals
-const SEARCH_CACHE_DURATION_MS = 30 * 60 * 1000; // 30 minutes for search results
+const SEARCH_CACHE_DURATION_MS = 3 * 60 * 60 * 1000; // 3 hours for search results
 
 // Ensure cache directory exists
 function ensureCacheDir() {
@@ -44,11 +44,19 @@ function readCacheFile<T>(filePath: string): T | null {
     return null;
 }
 
-// Write cache to file
+// Write cache to file atomically with restricted permissions
 function writeCacheFile<T>(filePath: string, data: T): void {
     try {
         ensureCacheDir();
-        fs.writeFileSync(filePath, JSON.stringify(data), 'utf-8');
+        // Ensure parent directory exists for nested cache dirs
+        const dir = path.dirname(filePath);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        // Write to temp file then rename for atomic operation
+        const tmpPath = `${filePath}.${process.pid}.tmp`;
+        fs.writeFileSync(tmpPath, JSON.stringify(data), { encoding: 'utf-8', mode: 0o600 });
+        fs.renameSync(tmpPath, filePath);
     } catch (error) {
         console.error(`[Cache] Error writing ${filePath}:`, error);
     }
@@ -182,6 +190,47 @@ function writeSearchCache(key: string, entry: SearchCacheEntry): void {
     } catch (error) {
         console.error('[SearchCache] Write error:', error);
     }
+}
+
+// --- Cache Cleanup ---
+// Throttle: run at most once per hour
+let lastCacheCleanup = 0;
+const CACHE_CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function cleanOldCacheFiles(dir: string, maxAgeMs: number = CACHE_MAX_AGE_MS): void {
+    try {
+        if (!fs.existsSync(dir)) return;
+        const files = fs.readdirSync(dir);
+        const now = Date.now();
+        let cleaned = 0;
+        for (const file of files) {
+            const filePath = path.join(dir, file);
+            try {
+                const stat = fs.statSync(filePath);
+                if (stat.isFile() && now - stat.mtimeMs > maxAgeMs) {
+                    fs.unlinkSync(filePath);
+                    cleaned++;
+                }
+            } catch {
+                // Skip files we can't stat/delete
+            }
+        }
+        if (cleaned > 0) {
+            console.log(`[CacheCleanup] Removed ${cleaned} expired files from ${dir}`);
+        }
+    } catch (error) {
+        console.error(`[CacheCleanup] Error cleaning ${dir}:`, error);
+    }
+}
+
+function maybeCleanCaches(): void {
+    const now = Date.now();
+    if (now - lastCacheCleanup < CACHE_CLEANUP_INTERVAL_MS) return;
+    lastCacheCleanup = now;
+    cleanOldCacheFiles(BROWSE_DEALS_CACHE_DIR);
+    cleanOldCacheFiles(SEARCH_CACHE_DIR);
+    cleanOldCacheFiles(PRODUCTS_CACHE_DIR);
 }
 
 // Price types for deals endpoint (different from CSV indices)
@@ -363,6 +412,8 @@ export interface DealPingProduct {
     dealEndTime?: number;       // Keepa time when deal expires
     // Price source tracking - 'list' = RRP, 'avg90' = 90-day average, 'deal' = deal API data
     priceSource?: 'list' | 'avg90' | 'deal';
+    // 90-day average price (for product page deal validation)
+    avg90Price?: number;
     // When the deal was first posted (unix timestamp ms)
     createdAt?: number;
 }
@@ -402,7 +453,7 @@ function keepaTimeToDate(keepaTime: number): Date {
  * Convert Keepa price (in cents) to pounds
  */
 function keepaPriceToPounds(price: number): number {
-    if (price <= 0) return 0;
+    if (price <= 0 || !Number.isFinite(price)) return 0;
     return price / 100;
 }
 
@@ -642,7 +693,7 @@ export async function getLightningDeals(options: {
 
     if (!response.ok) {
         const errorText = await response.text();
-        console.log(`[getLightningDeals] API error ${response.status}: ${errorText}`);
+        console.error(`[getLightningDeals] API error ${response.status}: ${errorText}`);
 
         // If API fails (rate limit, server error, etc.) but we have cache, return non-expired deals
         const cachedData = loadLightningDealsCache();
@@ -681,14 +732,15 @@ export async function getLightningDeals(options: {
             let originalPrice = deal.currentPrice / 100;
             let percentOff: number;
 
-            if (originalPrice > currentPrice) {
+            if (originalPrice > currentPrice && originalPrice > 0) {
                 // We have distinct deal vs regular prices — calculate percentOff from them
                 percentOff = Math.round(((originalPrice - currentPrice) / originalPrice) * 100);
-            } else if (deal.percentOff > 0 && currentPrice > 0) {
+            } else if (deal.percentOff > 0 && deal.percentOff < 100 && currentPrice > 0) {
                 // Keepa reports a discount but currentPrice == dealPrice (no separate regular price).
                 // Back-calculate the original price from Keepa's percentOff.
-                originalPrice = Math.round((currentPrice / (1 - deal.percentOff / 100)) * 100) / 100;
-                percentOff = deal.percentOff;
+                const safePercentOff = Math.min(deal.percentOff, 99);
+                originalPrice = Math.round((currentPrice / (1 - safePercentOff / 100)) * 100) / 100;
+                percentOff = safePercentOff;
             } else {
                 percentOff = 0;
             }
@@ -799,7 +851,7 @@ async function batchFetchProducts(asins: string[]): Promise<Map<string, ProductP
         });
 
         if (!response.ok) {
-            console.error('Batch fetch failed:', response.status);
+            console.error(`[batchFetchProducts] Keepa API error ${response.status} - RRP validation will be skipped for ${asins.length} ASINs`);
             return new Map();
         }
 
@@ -833,7 +885,7 @@ async function batchFetchProducts(asins: string[]): Promise<Map<string, ProductP
 
         return priceMap;
     } catch (error) {
-        console.error('Batch fetch error:', error);
+        console.error(`[batchFetchProducts] Network error - RRP validation will be skipped for ${asins.length} ASINs:`, error);
         return new Map();
     }
 }
@@ -886,6 +938,9 @@ export async function browseDeals(options: {
         validateRRP = false,
         limit = 150,
     } = options;
+
+    // Periodically clean expired cache files
+    maybeCleanCaches();
 
     // Check file-based cache first
     const cacheKey = JSON.stringify({
@@ -1091,6 +1146,7 @@ export async function browseDeals(options: {
                 }
 
                 originalPrice = referencePrice;
+                if (originalPrice <= 0) return null;
                 percentOff = Math.round(((originalPrice - actualCurrentPrice) / originalPrice) * 100);
 
                 // Only show if discount meets minimum threshold
@@ -1109,17 +1165,20 @@ export async function browseDeals(options: {
                 const avg90Cents = deal.avg90?.[0]?.[0];
                 if (avg90Cents && avg90Cents > 0) {
                     originalPrice = keepaPriceToPounds(avg90Cents);
+                    if (originalPrice <= 0) return null;
                     percentOff = Math.round(((originalPrice - currentPrice) / originalPrice) * 100);
 
                     // Sanity check - if our calculated discount differs too much from Keepa's, skip
                     if (Math.abs(percentOff - keepaPercentOff) > 20) {
                         // Use Keepa's percent and calculate back
                         percentOff = keepaPercentOff;
+                        if (percentOff >= 100) percentOff = 99;
                         originalPrice = currentPrice / (1 - percentOff / 100);
                     }
                 } else {
                     // Fall back to Keepa's percentage
                     percentOff = keepaPercentOff;
+                    if (percentOff >= 100) percentOff = 99;
                     originalPrice = currentPrice / (1 - percentOff / 100);
                 }
 
@@ -1154,7 +1213,7 @@ export async function browseDeals(options: {
         .filter((deal): deal is DealPingProduct => deal !== null && deal.currentPrice > 0 && deal.percentOff >= minPercentOff);
 
     // Check if there are more deals available (Keepa returns up to 150 deals per page)
-    const hasMore = (data.deals?.dr?.length || 0) >= 50;
+    const hasMore = (data.deals?.dr?.length || 0) >= 150;
 
     const result = {
         deals: rawDeals,
@@ -1185,6 +1244,9 @@ export async function searchProducts(
     }
 
     const { page = 0, stats = 90 } = options;
+
+    // Periodically clean expired cache files
+    maybeCleanCaches();
 
     // Check search cache first
     const searchCacheKey = JSON.stringify({ term, page, stats });
@@ -1278,11 +1340,9 @@ export async function searchProducts(
 
     const searchResult = { products, tokensLeft: data.tokensLeft };
 
-    // Cache the result
-    if (products.length > 0) {
-        writeSearchCache(searchCacheKey, { ...searchResult, timestamp: Date.now() });
-        console.log(`[searchProducts] Cached ${products.length} results for "${term}"`);
-    }
+    // Cache the result (including empty results to prevent repeated API calls)
+    writeSearchCache(searchCacheKey, { ...searchResult, timestamp: Date.now() });
+    console.log(`[searchProducts] Cached ${products.length} results for "${term}"`);
 
     return searchResult;
 }
@@ -1528,25 +1588,23 @@ export async function getProductWithHistory(
     const avg90PriceCents = productStats?.avg90?.[CSV_PRICE_INDICES.AMAZON] ?? -1;
     const avg90Price = avg90PriceCents > 0 ? keepaPriceToPounds(avg90PriceCents) : 0;
 
-    // Determine strikethrough price - match what Amazon actually displays
-    // Amazon shows LIST_PRICE (RRP) as the "Was" price when available
-    // Only fall back to avg90 if there's no LIST_PRICE
+    // Determine strikethrough price
+    // Prefer avg90 as the most honest "was" price since it reflects actual selling price.
+    // Only use LIST_PRICE (RRP) if avg90 is unavailable or not above current price,
+    // and the LIST_PRICE passes sanity checks.
     let originalPrice = currentPrice;
     let priceSource: 'list' | 'avg90' | 'deal' | undefined;
-    if (listPrice > 0 && listPrice > currentPrice) {
-        // Use LIST_PRICE (RRP) - this is what Amazon shows as "Was" price
-        // Sanity check: if RRP is more than 3x the current price, it's likely stale/wrong
-        if (listPrice <= currentPrice * 3) {
-            originalPrice = listPrice;
-            priceSource = 'list';
-        } else if (avg90Price > 0 && avg90Price > currentPrice) {
-            originalPrice = avg90Price;
-            priceSource = 'avg90';
-        }
-    } else if (avg90Price > 0 && avg90Price > currentPrice) {
-        // No valid LIST_PRICE - use 90-day average as "Was" price
+    if (avg90Price > 0 && avg90Price > currentPrice) {
+        // 90-day average is the most reliable "was" price
         originalPrice = avg90Price;
         priceSource = 'avg90';
+    } else if (listPrice > 0 && listPrice > currentPrice) {
+        // Fall back to LIST_PRICE (RRP) with sanity check
+        // If RRP is more than 2x the current price, it's likely stale/inflated
+        if (listPrice <= currentPrice * 2) {
+            originalPrice = listPrice;
+            priceSource = 'list';
+        }
     }
 
     const percentOff = originalPrice > currentPrice && currentPrice > 0
@@ -1616,6 +1674,7 @@ export async function getProductWithHistory(
         isLowestEver,
         isLowest90Days,
         priceSource,
+        avg90Price: avg90Price > 0 ? Math.round(avg90Price * 100) / 100 : undefined,
         createdAt: lightningCreatedAt,
     };
 
@@ -1646,7 +1705,9 @@ export async function getProductWithHistory(
         let priceSum = 0;
         let priceCount = 0;
 
-        for (let i = 0; i < amazonPrices.length; i += 2) {
+        // Ensure even number of elements (pairs of [time, price])
+        const histLen = amazonPrices.length - (amazonPrices.length % 2);
+        for (let i = 0; i < histLen; i += 2) {
             const keepaTime = amazonPrices[i];
             const priceCents = amazonPrices[i + 1];
 
@@ -1654,6 +1715,12 @@ export async function getProductWithHistory(
 
             const date = keepaTimeToDate(keepaTime);
             const price = keepaPriceToPounds(priceCents);
+
+            // Skip invalid prices
+            if (!Number.isFinite(price) || price <= 0) continue;
+
+            // Skip invalid dates
+            if (isNaN(date.getTime())) continue;
 
             if (price < allTimeLow) {
                 allTimeLow = price;
@@ -1687,8 +1754,10 @@ export async function getProductWithHistory(
         // Append today's price so the chart extends to the current date
         const now = new Date();
         const lastPoint = history[history.length - 1];
-        const todayPrice = finalCurrentPrice > 0 ? Math.round(finalCurrentPrice * 100) / 100 : (lastPoint?.price ?? 0);
-        if (todayPrice > 0) {
+        const todayPrice = (Number.isFinite(finalCurrentPrice) && finalCurrentPrice > 0)
+            ? Math.round(finalCurrentPrice * 100) / 100
+            : (lastPoint?.price ?? 0);
+        if (todayPrice > 0 && Number.isFinite(todayPrice)) {
             const todayFormat: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
             // Only add if the last point isn't already from today
             if (!lastPoint || now.getTime() - lastPoint.timestamp > 24 * 60 * 60 * 1000) {
@@ -1820,7 +1889,9 @@ export async function getPriceHistory(
     let priceSum = 0;
     let priceCount = 0;
 
-    for (let i = 0; i < amazonPrices.length; i += 2) {
+    // Ensure even number of elements (pairs of [time, price])
+    const priceLen = amazonPrices.length - (amazonPrices.length % 2);
+    for (let i = 0; i < priceLen; i += 2) {
         const keepaTime = amazonPrices[i];
         const priceCents = amazonPrices[i + 1];
 
@@ -1829,6 +1900,10 @@ export async function getPriceHistory(
 
         const date = keepaTimeToDate(keepaTime);
         const price = keepaPriceToPounds(priceCents);
+
+        // Skip invalid prices or dates
+        if (!Number.isFinite(price) || price <= 0) continue;
+        if (isNaN(date.getTime())) continue;
 
         // Track all-time stats (regardless of date filter)
         if (price < allTimeLow) {
@@ -1878,8 +1953,10 @@ export async function getPriceHistory(
     // Append today's price so the chart extends to the current date
     const now = new Date();
     const lastPoint = history[history.length - 1];
-    const todayPrice = currentPrice > 0 ? Math.round(currentPrice * 100) / 100 : (lastPoint?.price ?? 0);
-    if (todayPrice > 0) {
+    const todayPrice = (Number.isFinite(currentPrice) && currentPrice > 0)
+        ? Math.round(currentPrice * 100) / 100
+        : (lastPoint?.price ?? 0);
+    if (todayPrice > 0 && Number.isFinite(todayPrice)) {
         const todayFormat: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
         if (!lastPoint || now.getTime() - lastPoint.timestamp > 24 * 60 * 60 * 1000) {
             history.push({
@@ -1896,7 +1973,13 @@ export async function getPriceHistory(
     let sampledHistory = history;
     if (history.length > maxPoints) {
         const step = Math.ceil(history.length / maxPoints);
-        sampledHistory = history.filter((_, index) => index % step === 0);
+        // Find indices of the actual min and max price points
+        let minIdx = 0, maxIdx = 0;
+        for (let i = 1; i < history.length; i++) {
+            if (history[i].price < history[minIdx].price) minIdx = i;
+            if (history[i].price > history[maxIdx].price) maxIdx = i;
+        }
+        sampledHistory = history.filter((_, index) => index % step === 0 || index === minIdx || index === maxIdx);
         // Always include the last point
         if (sampledHistory[sampledHistory.length - 1] !== history[history.length - 1]) {
             sampledHistory.push(history[history.length - 1]);

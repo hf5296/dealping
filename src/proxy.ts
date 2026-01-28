@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
     // Check if maintenance mode is enabled
     const isMaintenanceMode = process.env.MAINTENANCE_MODE === 'true';
 
@@ -15,7 +15,7 @@ export function middleware(request: NextRequest) {
         if (
             request.nextUrl.pathname.startsWith('/_next') ||
             request.nextUrl.pathname.startsWith('/api') ||
-            request.nextUrl.pathname.includes('.') // Static files like favicon, images
+            /\.(js|css|png|jpg|jpeg|gif|svg|ico|webp|woff|woff2|ttf|eot)$/i.test(request.nextUrl.pathname)
         ) {
             return NextResponse.next();
         }

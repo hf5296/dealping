@@ -84,13 +84,20 @@ export function checkRateLimit(
 }
 
 /**
- * Get client IP from request headers
+ * Get client IP from request headers.
+ *
+ * Only trusts X-Forwarded-For when TRUST_PROXY=true (i.e., behind a trusted
+ * reverse proxy like Vercel, AWS ALB, or nginx). Without this, clients can
+ * spoof the header to bypass rate limits.
  */
 export function getClientIp(request: Request): string {
-    // Check various headers for the real IP
-    const forwarded = request.headers.get("x-forwarded-for");
-    if (forwarded) {
-        return forwarded.split(",")[0].trim();
+    const trustProxy = process.env.TRUST_PROXY === "true";
+
+    if (trustProxy) {
+        const forwarded = request.headers.get("x-forwarded-for");
+        if (forwarded) {
+            return forwarded.split(",")[0].trim();
+        }
     }
 
     const realIp = request.headers.get("x-real-ip");
@@ -98,7 +105,7 @@ export function getClientIp(request: Request): string {
         return realIp;
     }
 
-    // Fallback (won't be accurate behind proxy)
+    // Fallback
     return "unknown";
 }
 

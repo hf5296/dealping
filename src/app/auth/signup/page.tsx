@@ -54,7 +54,7 @@ export default function SignUpPage() {
 
             if (result?.error) {
                 setError("Account created but failed to sign in. Please sign in manually.");
-                router.push("/auth/signin");
+                router.push(`/auth/signin?email=${encodeURIComponent(email)}`);
             } else {
                 router.push("/");
                 router.refresh();
@@ -72,8 +72,12 @@ export default function SignUpPage() {
                 {/* Logo */}
                 <div className="mb-8 text-center">
                     <Link href="/" className="inline-flex items-center gap-2">
-                        <span className="text-3xl">💰</span>
-                        <span className="text-2xl font-bold gradient-text">FindADeal</span>
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500">
+                            <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                            </svg>
+                        </div>
+                        <span className="text-2xl font-bold text-gray-900 dark:text-white">Deal<span className="text-emerald-500">Ping</span></span>
                     </Link>
                     <p className="mt-2 text-gray-500 dark:text-gray-400">
                         Create an account to start saving

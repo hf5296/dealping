@@ -2,9 +2,14 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { checkRateLimit, getClientIp, rateLimitExceeded } from "@/lib/rateLimit";
 
 // POST /api/user/password - Change password
 export async function POST(request: Request) {
+    const ip = getClientIp(request);
+    const rl = checkRateLimit(ip, "password-change", { limit: 5, windowSeconds: 900 });
+    if (!rl.allowed) return rateLimitExceeded(rl);
+
     try {
         const session = await auth();
 
@@ -28,6 +33,13 @@ export async function POST(request: Request) {
         if (newPassword.length < 8) {
             return NextResponse.json(
                 { error: "New password must be at least 8 characters" },
+                { status: 400 }
+            );
+        }
+
+        if (newPassword.length > 128) {
+            return NextResponse.json(
+                { error: "Password is too long" },
                 { status: 400 }
             );
         }

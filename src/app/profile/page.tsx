@@ -13,6 +13,7 @@ interface Profile {
     email: string;
     createdAt: string;
     activeAlerts: number;
+    hasPassword: boolean;
 }
 
 export default function ProfilePage() {
@@ -263,7 +264,8 @@ export default function ProfilePage() {
                     </div>
                 </section>
 
-                {/* Change Password */}
+                {/* Change Password - only for credentials users */}
+                {profile?.hasPassword && (
                 <section className="mb-6 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
                     <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
                         Change Password
@@ -345,6 +347,7 @@ export default function ProfilePage() {
                         </button>
                     </form>
                 </section>
+                )}
 
                 {/* Sign Out */}
                 <section className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">

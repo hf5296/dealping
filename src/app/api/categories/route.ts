@@ -1,8 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { checkRateLimit, getClientIp, rateLimitExceeded } from "@/lib/rateLimit";
 
 // GET /api/categories - List all categories with product counts
-export async function GET() {
+export async function GET(request: NextRequest) {
+    const ip = getClientIp(request);
+    const rl = checkRateLimit(ip, "categories", { limit: 60, windowSeconds: 60 });
+    if (!rl.allowed) return rateLimitExceeded(rl);
     try {
         const categories = await prisma.category.findMany({
             include: {

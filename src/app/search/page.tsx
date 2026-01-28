@@ -87,6 +87,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
                 {/* Results - Client component handles load more and rate limiting */}
                 {query && !error && (
                     <SearchResultsClient
+                        key={query}
                         initialProducts={products}
                         query={query}
                         initialHasMore={hasMore}

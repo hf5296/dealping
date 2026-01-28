@@ -11,14 +11,14 @@ DealPing is a UK Amazon deals aggregator using the Keepa API to display verified
 - [x] Keepa API integration (`src/lib/keepa.ts`)
 - [x] Lightning Deals API with 4-hour file-based caching (500 tokens/call)
 - [x] Browse Deals with 10-minute file-based caching (5 tokens/call)
-- [x] Search with 30-minute file-based caching (10 tokens/call)
+- [x] Search with 3-hour file-based caching (10 tokens/call)
 - [x] Product data with 1-hour file-based caching (1-2 tokens/call)
 - [x] Daily cron job for refreshing deals (`/api/cron/refresh-deals`)
 - [x] Amazon UK affiliate link generation
-- [x] Maintenance mode middleware (MAINTENANCE_MODE env toggle)
+- [x] Maintenance mode proxy (MAINTENANCE_MODE env toggle, `src/proxy.ts` — Next.js 16 convention)
 
 ### Anti-Fake-Deal System
-- [x] `isLowest90` filter - Price must be at 90-day low
+- [x] `isLowest90` filter - Homepage lightning deals only (removed from /deals and category pages)
 - [x] `maxSalesRank` filter - Only popular products (top 100k general, 200k categories)
 - [x] `minRating` filter - At least 3.5 stars
 - [x] Category exclusions (Books, Kindle, Music, DVD) for general browsing only
@@ -40,10 +40,10 @@ DealPing is a UK Amazon deals aggregator using the Keepa API to display verified
 - [x] Lazy-loaded price history (PriceHistoryLoader saves tokens)
 
 ### Pages
-- [x] Homepage (`/`) - Lightning Deals only (no browse deals fallback), friendly empty state
-- [x] Deals page (`/deals`) - Browse deals with filtering/sorting (revalidates every 5 min)
+- [x] Homepage (`/`) - Lightning Deals only (no browse deals fallback), friendly empty state, enlarged category cards
+- [x] Deals page (`/deals`) - Browse deals with category filter, pending filters with Apply button, Load More every 48 products (revalidates every 5 min)
 - [x] Search page (`/search`) - Keepa product search with pagination, filtering, sorting
-- [x] Product page (`/product/[asin]`) - Product details with price history, disclaimers, alerts, sharing
+- [x] Product page (`/product/[asin]`) - Product details with price history, disclaimers, alerts, sharing, rating overlay on image
 - [x] Categories page (`/categories`) - Category listing
 - [x] Category page (`/categories/[slug]`) - Products by category with filters and load more
 - [x] Alerts page (`/alerts`) - User's price alerts dashboard (auth-protected)
@@ -54,12 +54,12 @@ DealPing is a UK Amazon deals aggregator using the Keepa API to display verified
 
 ### Components
 - [x] Header with navigation, search, user menu dropdown, mobile hamburger menu
-- [x] Footer
+- [x] Footer (3-column layout, no retailers section)
 - [x] ProductCard - Deal card with discount badge, deal score, "Posted X ago" badge, affiliate link
 - [x] ProductCardSkeleton - Loading skeleton for product cards
 - [x] SearchBar - With search history (local storage)
 - [x] CategoryCard
-- [x] DealsClient - Client-side filtering/sorting for deals page
+- [x] DealsClient - Client-side filtering/sorting with category dropdown, Apply button, Load More pagination (48 per batch)
 - [x] SearchResultsClient - Client-side filtering/sorting for search results
 - [x] CategoryDealsClient - Client-side filtering for category pages
 - [x] PriceHistoryChart - Recharts area chart with stats panel
@@ -97,7 +97,7 @@ DealPing is a UK Amazon deals aggregator using the Keepa API to display verified
 - [x] Callback URL support for post-login redirect
 
 ### Price Alerts System
-- [x] Database setup (SQLite with Prisma ORM)
+- [x] Database setup (PostgreSQL/Neon with Prisma 7 ORM, `prisma-client` generator)
 - [x] Alert API endpoints (GET/POST/PATCH/DELETE)
 - [x] Email notification system (Resend with HTML templates)
 - [x] Price check cron job (`/api/cron/check-prices`)
@@ -122,7 +122,7 @@ DealPing is a UK Amazon deals aggregator using the Keepa API to display verified
 - [x] `src/lib/keepa.ts` - Keepa API, caching, transforms, affiliate URLs
 - [x] `src/lib/utils.ts` - `formatTimeAgo()` shared helper
 - [x] `src/lib/email.ts` - Resend email with HTML template (dev mode logs instead of sending)
-- [x] `src/lib/prisma.ts` - PrismaClient singleton
+- [x] `src/lib/prisma.ts` - PrismaClient singleton (Prisma 7 `prisma-client` with `@prisma/adapter-pg`)
 - [x] `src/lib/rateLimit.ts` - Rate limiting
 - [x] `src/lib/sampleData.ts` - Categories and sample data
 - [x] `src/lib/amazon.ts`, `awin.ts` - Affiliate integrations
@@ -132,11 +132,9 @@ DealPing is a UK Amazon deals aggregator using the Keepa API to display verified
 ## Remaining Features
 
 ### Medium Priority
-- [ ] Saved products/watchlist (bookmark without setting price alert)
 - [ ] PWA support (optional - add to home screen, offline)
 
 ### Low Priority
-- [ ] Conversion tracking
 - [ ] Browser extension for price checking
 - [ ] RSS feed for deals
 
@@ -161,7 +159,7 @@ DealPing is a UK Amazon deals aggregator using the Keepa API to display verified
 
 ---
 
-## Database Schema (Prisma SQLite)
+## Database Schema (Prisma 7 + PostgreSQL/Neon)
 
 | Model | Key Fields |
 |---|---|
@@ -188,7 +186,7 @@ Daily Keepa token budget: ~30,000 tokens (refills at 20 tokens/minute)
 | Lightning Deals | 500 tokens/call | 4 hours |
 | Browse Deals | 5 tokens/150 deals | 10 minutes |
 | Product | 1-2 tokens/ASIN | 1 hour |
-| Search | 10 tokens/page | 30 minutes |
+| Search | 10 tokens/page | 3 hours |
 | Price History | 1-2 tokens/ASIN | 1 hour (shared with product) |
 | Price Check (Cron) | 1 token/ASIN | On demand |
 
@@ -196,7 +194,7 @@ Daily Keepa token budget: ~30,000 tokens (refills at 20 tokens/minute)
 1. **File-based caching on ALL endpoints** - persists across server restarts and hot reloads
 2. **Lightning Deals cache (4hr)** - refreshed 6x/day = 3,000 tokens/day
 3. **Browse Deals cache (10min)** - prevents user refresh spam
-4. **Search cache (30min)** - same search term returns cached results
+4. **Search cache (3hr)** - same search term returns cached results
 5. **Product cache (1hr)** - individual product pages
 6. **Lazy Price History** - only loads when user clicks button
 7. **No RRP validation by default** - uses Keepa's deltaPercent instead of batch product fetch (saves 1 token/product)
@@ -207,7 +205,7 @@ Daily Keepa token budget: ~30,000 tokens (refills at 20 tokens/minute)
 - Browse deals page: ~720 tokens (1 refresh per 10 min = 144 calls, but many are cache hits)
 - Category pages (12 categories): ~360 tokens
 - Product views (~100/day): ~200 tokens
-- Searches (~50/day): ~500 tokens
+- Searches (~50 unique/day): ~500 tokens (3hr cache per term, empty results cached too)
 - Price alert checks (4x/day): ~100 tokens (assuming ~25 unique ASINs)
 - **Total: ~5,000 tokens/day** (well within 30,000 budget)
 

@@ -22,6 +22,24 @@ export async function POST(request: Request) {
             );
         }
 
+        // Validate name field
+        if (name !== undefined && name !== null) {
+            if (typeof name !== 'string' || name.trim().length > 100) {
+                return NextResponse.json(
+                    { error: "Name must be 100 characters or less" },
+                    { status: 400 }
+                );
+            }
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return NextResponse.json(
+                { error: "Invalid email address" },
+                { status: 400 }
+            );
+        }
+
         if (password.length < 8) {
             return NextResponse.json(
                 { error: "Password must be at least 8 characters" },
@@ -29,15 +47,26 @@ export async function POST(request: Request) {
             );
         }
 
+        if (password.length > 128) {
+            return NextResponse.json(
+                { error: "Password is too long" },
+                { status: 400 }
+            );
+        }
+
+        // Normalize email
+        const normalizedEmail = email.toLowerCase().trim();
+
         // Check if user already exists
         const existingUser = await prisma.user.findUnique({
-            where: { email },
+            where: { email: normalizedEmail },
         });
 
         if (existingUser) {
+            // Return generic error to prevent email enumeration
             return NextResponse.json(
-                { error: "User already exists with this email" },
-                { status: 409 }
+                { error: "Unable to create account. Please try again or sign in." },
+                { status: 400 }
             );
         }
 
@@ -47,8 +76,8 @@ export async function POST(request: Request) {
         // Create user
         const user = await prisma.user.create({
             data: {
-                name,
-                email,
+                name: name ? name.trim() : null,
+                email: normalizedEmail,
                 password: hashedPassword,
             },
         });

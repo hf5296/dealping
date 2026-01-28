@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { checkRateLimit, rateLimitExceeded } from "@/lib/rateLimit";
 
 // GET /api/user/profile - Fetch user profile
 export async function GET() {
@@ -14,12 +15,17 @@ export async function GET() {
             );
         }
 
+        // Rate limit: 30 req/min for GET
+        const rl = checkRateLimit(session.user.id, "profile-get", { limit: 30, windowSeconds: 60 });
+        if (!rl.allowed) return rateLimitExceeded(rl);
+
         const user = await prisma.user.findUnique({
             where: { id: session.user.id },
             select: {
                 id: true,
                 name: true,
                 email: true,
+                password: true,
                 createdAt: true,
                 _count: {
                     select: {
@@ -44,6 +50,7 @@ export async function GET() {
             email: user.email,
             createdAt: user.createdAt,
             activeAlerts: user._count.alerts,
+            hasPassword: !!user.password,
         });
     } catch (error) {
         console.error("Failed to fetch profile:", error);
@@ -65,6 +72,10 @@ export async function PATCH(request: Request) {
                 { status: 401 }
             );
         }
+
+        // Rate limit: 10 req/min for PATCH
+        const rl = checkRateLimit(session.user.id, "profile-patch", { limit: 10, windowSeconds: 60 });
+        if (!rl.allowed) return rateLimitExceeded(rl);
 
         const body = await request.json();
         const { name } = body;

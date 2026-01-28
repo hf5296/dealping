@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { getProduct, generateAffiliateUrl } from '@/lib/keepa';
 import { sendPriceDropEmail } from '@/lib/email';
+import { checkRateLimit, getClientIp, rateLimitExceeded } from '@/lib/rateLimit';
 
 /**
  * Price Check Cron Job
@@ -19,15 +21,27 @@ import { sendPriceDropEmail } from '@/lib/email';
 
 const MIN_NOTIFICATION_INTERVAL_MS = 24 * 60 * 60 * 1000; // Don't re-notify within 24 hours
 
+function verifySecret(provided: string, expected: string): boolean {
+    try {
+        return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+    } catch {
+        return false;
+    }
+}
+
 export async function GET(request: NextRequest) {
-    // Auth check
+    // Rate limit: 6 requests per hour
+    const ip = getClientIp(request);
+    const rl = checkRateLimit(ip, 'cron-check-prices', { limit: 6, windowSeconds: 3600 });
+    if (!rl.allowed) return rateLimitExceeded(rl);
+
+    // Auth check with timing-safe comparison
     const authHeader = request.headers.get('authorization');
     const cronSecret = process.env.CRON_SECRET;
+    const providedSecret = authHeader?.replace('Bearer ', '') || '';
 
-    if (process.env.NODE_ENV === 'production' && cronSecret) {
-        if (authHeader !== `Bearer ${cronSecret}`) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
+    if (!cronSecret || !verifySecret(providedSecret, cronSecret)) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     try {
@@ -83,7 +97,7 @@ export async function GET(request: NextRequest) {
                 name: 'Amazon UK',
                 slug: 'amazon-uk',
                 affiliateNetwork: 'amazon',
-                affiliateId: 'findadeal0a-21',
+                affiliateId: 'dealping0d-21',
             },
         });
 
@@ -121,6 +135,9 @@ export async function GET(request: NextRequest) {
                     }
 
                     // Check each alert for this ASIN
+                    // Collect alerts to notify, update DB in transaction, then send emails
+                    const alertsToNotify: { alert: typeof alertsForAsin[0]; referencePrice: number; percentOff: number }[] = [];
+
                     for (const alert of alertsForAsin) {
                         const previousPrice = alert.product.prices[0]?.price;
 
@@ -153,26 +170,40 @@ export async function GET(request: NextRequest) {
                                 ? Math.round(((referencePrice - currentPrice) / referencePrice) * 100)
                                 : 0;
 
-                            await sendPriceDropEmail({
-                                userEmail: alert.user.email,
-                                userName: alert.user.name || undefined,
-                                productName: alert.product.name,
-                                productImage: alert.product.imageUrl || undefined,
-                                currentPrice,
-                                previousPrice: referencePrice,
-                                retailer: 'Amazon UK',
-                                productUrl: generateAffiliateUrl(asin),
-                                percentOff,
-                            });
+                            alertsToNotify.push({ alert, referencePrice, percentOff });
+                        }
+                    }
 
-                            // Update lastNotified
-                            await prisma.priceAlert.update({
-                                where: { id: alert.id },
-                                data: { lastNotified: new Date() },
-                            });
+                    // Update lastNotified for all alerts in a single transaction
+                    if (alertsToNotify.length > 0) {
+                        await prisma.$transaction(
+                            alertsToNotify.map(({ alert }) =>
+                                prisma.priceAlert.update({
+                                    where: { id: alert.id },
+                                    data: { lastNotified: new Date() },
+                                })
+                            )
+                        );
 
-                            notifiedCount++;
-                            console.log(`[cron/check-prices] Notified ${alert.user.email} about ${asin} (£${currentPrice})`);
+                        // Send emails after DB updates succeed
+                        for (const { alert, referencePrice, percentOff } of alertsToNotify) {
+                            try {
+                                await sendPriceDropEmail({
+                                    userEmail: alert.user.email!,
+                                    userName: alert.user.name || undefined,
+                                    productName: alert.product.name,
+                                    productImage: alert.product.imageUrl || undefined,
+                                    currentPrice,
+                                    previousPrice: referencePrice,
+                                    retailer: 'Amazon UK',
+                                    productUrl: generateAffiliateUrl(asin),
+                                    percentOff,
+                                });
+                                notifiedCount++;
+                                console.log(`[cron/check-prices] Notified ${alert.user.email} about ${asin} (£${currentPrice})`);
+                            } catch (emailErr) {
+                                console.error(`[cron/check-prices] Failed to email ${alert.user.email}:`, emailErr);
+                            }
                         }
                     }
                 } catch (err) {
@@ -201,7 +232,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json(
             {
                 success: false,
-                error: error instanceof Error ? error.message : 'Failed to check prices',
+                error: 'Failed to check prices',
             },
             { status: 500 }
         );

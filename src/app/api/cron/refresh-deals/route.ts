@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { getLightningDeals, clearLightningDealsCache } from '@/lib/keepa';
 import { revalidatePath } from 'next/cache';
+import { checkRateLimit, getClientIp, rateLimitExceeded } from '@/lib/rateLimit';
 
 // This endpoint is meant to be called by a cron job once daily (e.g., at midnight)
 // It refreshes the Lightning Deals cache and revalidates the homepage
@@ -8,19 +10,30 @@ import { revalidatePath } from 'next/cache';
 // Vercel Cron: Add to vercel.json to run at midnight UK time
 // Or use an external cron service like cron-job.org
 
+function verifySecret(provided: string, expected: string): boolean {
+    try {
+        return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+    } catch {
+        return false;
+    }
+}
+
 export async function GET(request: NextRequest) {
-    // Verify cron secret to prevent unauthorized calls
+    // Rate limit: 2 requests per hour
+    const ip = getClientIp(request);
+    const rl = checkRateLimit(ip, 'cron-refresh-deals', { limit: 2, windowSeconds: 3600 });
+    if (!rl.allowed) return rateLimitExceeded(rl);
+
+    // Verify cron secret with timing-safe comparison
     const authHeader = request.headers.get('authorization');
     const cronSecret = process.env.CRON_SECRET;
+    const providedSecret = authHeader?.replace('Bearer ', '') || '';
 
-    // Allow calls without auth in development, or with correct secret in production
-    if (process.env.NODE_ENV === 'production' && cronSecret) {
-        if (authHeader !== `Bearer ${cronSecret}`) {
-            return NextResponse.json(
-                { error: 'Unauthorized' },
-                { status: 401 }
-            );
-        }
+    if (!cronSecret || !verifySecret(providedSecret, cronSecret)) {
+        return NextResponse.json(
+            { error: 'Unauthorized' },
+            { status: 401 }
+        );
     }
 
     try {
