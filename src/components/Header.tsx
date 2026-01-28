@@ -65,6 +65,12 @@ export default function Header() {
                             Categories
                         </Link>
                         <Link
+                            href="/lightning-deals"
+                            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                        >
+                            Lightning Deals
+                        </Link>
+                        <Link
                             href="/deals"
                             className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
                         >
@@ -176,18 +182,25 @@ export default function Header() {
                     <div className="border-t border-gray-200 pb-4 dark:border-gray-700 sm:hidden">
                         <nav className="flex flex-col gap-1 pt-2">
                             <Link
-                                href="/deals"
-                                onClick={() => setMobileMenuOpen(false)}
-                                className="rounded-lg px-4 py-3 text-base font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
-                            >
-                                Hot Deals
-                            </Link>
-                            <Link
                                 href="/categories"
                                 onClick={() => setMobileMenuOpen(false)}
                                 className="rounded-lg px-4 py-3 text-base font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
                             >
                                 Categories
+                            </Link>
+                            <Link
+                                href="/lightning-deals"
+                                onClick={() => setMobileMenuOpen(false)}
+                                className="rounded-lg px-4 py-3 text-base font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+                            >
+                                Lightning Deals
+                            </Link>
+                            <Link
+                                href="/deals"
+                                onClick={() => setMobileMenuOpen(false)}
+                                className="rounded-lg px-4 py-3 text-base font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+                            >
+                                Hot Deals
                             </Link>
                             <Link
                                 href="/alerts"

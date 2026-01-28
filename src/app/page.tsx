@@ -14,13 +14,13 @@ async function getLightningDealsForHomepage(): Promise<DealPingProduct[]> {
   try {
     // Lightning Deals only - Amazon's official promotions with GUARANTEED
     // strikethrough pricing. No fallback to avoid showing misleading discounts.
-    // Max 10 deals, refreshed every 4 hours (3000 tokens/day)
+    // Max 12 deals for homepage preview, refreshed every 4 hours (3000 tokens/day)
     const result = await getLightningDeals({
       state: 'AVAILABLE',
       minPercentOff: 15,
       minRating: 3.0,
       minReviews: 5,
-      limit: 10,
+      limit: 12,
     });
 
     return result.deals;
@@ -98,7 +98,7 @@ export default async function Home() {
                 </p>
               </div>
               <a
-                href="/deals"
+                href="/lightning-deals"
                 className="text-sm font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
               >
                 View all →
