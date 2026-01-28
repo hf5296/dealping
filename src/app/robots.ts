@@ -5,7 +5,7 @@ export default function robots(): MetadataRoute.Robots {
         rules: {
             userAgent: "*",
             allow: "/",
-            disallow: ["/api/", "/auth/"],
+            disallow: ["/api/", "/auth/", "/coming-soon"],
         },
         sitemap: `${process.env.NEXT_PUBLIC_APP_URL || "https://dealping.co.uk"}/sitemap.xml`,
     };
