@@ -53,7 +53,6 @@ export async function GET(request: NextRequest) {
             query,
             page,
             total: result.products.length,
-            tokensLeft: result.tokensLeft,
         };
 
         // Update cache

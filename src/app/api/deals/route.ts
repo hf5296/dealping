@@ -92,7 +92,6 @@ export async function GET(request: NextRequest) {
             total: result.deals.length,
             page,
             hasMore: result.hasMore && limitedDeals.length >= limit && page < 9,
-            tokensLeft: result.tokensLeft,
         });
         res.headers.set('Set-Cookie', sessionCookieHeader(sessionId));
         return res;

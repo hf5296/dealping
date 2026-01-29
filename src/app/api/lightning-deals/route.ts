@@ -95,7 +95,6 @@ export async function GET(request: NextRequest) {
             page,
             limit,
             hasMore,
-            tokensLeft: result.tokensLeft,
         });
         res.headers.set('Set-Cookie', sessionCookieHeader(sessionId));
         return res;

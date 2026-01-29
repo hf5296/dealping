@@ -50,8 +50,6 @@ export async function GET(
             success: true,
             product: result.product,
             priceHistory: includeHistory ? result.priceHistory : null,
-            fromCache: result.fromCache,
-            tokensLeft: result.tokensLeft,
         });
         res.headers.set('Set-Cookie', sessionCookieHeader(sessionId));
         return res;
