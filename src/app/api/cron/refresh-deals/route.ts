@@ -11,11 +11,10 @@ import { checkRateLimit, getClientIp, rateLimitExceeded } from '@/lib/rateLimit'
 // Or use an external cron service like cron-job.org
 
 function verifySecret(provided: string, expected: string): boolean {
-    try {
-        return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
-    } catch {
-        return false;
-    }
+    const key = 'secret-compare';
+    const a = crypto.createHmac('sha256', key).update(provided).digest();
+    const b = crypto.createHmac('sha256', key).update(expected).digest();
+    return crypto.timingSafeEqual(a, b);
 }
 
 export async function GET(request: NextRequest) {

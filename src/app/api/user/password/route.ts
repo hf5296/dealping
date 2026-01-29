@@ -7,8 +7,8 @@ import { checkRateLimit, getClientIp, rateLimitExceeded } from "@/lib/rateLimit"
 // POST /api/user/password - Change password
 export async function POST(request: Request) {
     const ip = getClientIp(request);
-    const rl = checkRateLimit(ip, "password-change", { limit: 5, windowSeconds: 900 });
-    if (!rl.allowed) return rateLimitExceeded(rl);
+    const ipRl = checkRateLimit(ip, "password-change", { limit: 10, windowSeconds: 900 });
+    if (!ipRl.allowed) return rateLimitExceeded(ipRl);
 
     try {
         const session = await auth();
@@ -19,6 +19,10 @@ export async function POST(request: Request) {
                 { status: 401 }
             );
         }
+
+        // Per-user rate limit (tighter than IP — 5 attempts per 15 min)
+        const userRl = checkRateLimit(session.user.id, "password-change-user", { limit: 5, windowSeconds: 900 });
+        if (!userRl.allowed) return rateLimitExceeded(userRl);
 
         const body = await request.json();
         const { currentPassword, newPassword } = body;

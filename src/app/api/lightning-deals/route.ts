@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLightningDeals, DealPingProduct } from '@/lib/keepa';
-import { checkRateLimit, getClientIp, rateLimitExceeded } from '@/lib/rateLimit';
+import { checkRateLimit, getClientIp, getSessionId, sessionCookieHeader, rateLimitExceeded } from '@/lib/rateLimit';
+import { BudgetExhaustedError } from '@/lib/keepaBudget';
 
 export async function GET(request: NextRequest) {
     const ip = getClientIp(request);
-    const rl = checkRateLimit(ip, 'lightning-deals', { limit: 20, windowSeconds: 60 });
+    const rl = checkRateLimit(ip, 'lightning-deals', { limit: 3, windowSeconds: 60 });
     if (!rl.allowed) return rateLimitExceeded(rl);
+
+    // Session-based rate limit (survives IP rotation)
+    const sessionId = getSessionId(request);
+    const sessionRl = checkRateLimit(sessionId, 'session-keepa', { limit: 12, windowSeconds: 60 });
+    if (!sessionRl.allowed) {
+        const res = rateLimitExceeded(sessionRl);
+        res.headers.set('Set-Cookie', sessionCookieHeader(sessionId));
+        return res;
+    }
 
     try {
         const searchParams = request.nextUrl.searchParams;
@@ -32,6 +42,7 @@ export async function GET(request: NextRequest) {
             minRating: 3.0,
             minReviews: 5,
             limit: 500, // Get all available deals
+            userFacing: true,
         });
 
         // Apply filters server-side (all data is cached, so this is fast)
@@ -77,7 +88,7 @@ export async function GET(request: NextRequest) {
         const paginatedDeals = filteredDeals.slice(startIndex, endIndex);
         const hasMore = endIndex < totalFiltered && page < 19;
 
-        return NextResponse.json({
+        const res = NextResponse.json({
             success: true,
             deals: paginatedDeals,
             total: totalFiltered,
@@ -86,7 +97,15 @@ export async function GET(request: NextRequest) {
             hasMore,
             tokensLeft: result.tokensLeft,
         });
+        res.headers.set('Set-Cookie', sessionCookieHeader(sessionId));
+        return res;
     } catch (error) {
+        if (error instanceof BudgetExhaustedError) {
+            return NextResponse.json(
+                { success: false, error: 'Service temporarily unavailable. Please try again later.', deals: [], total: 0, hasMore: false },
+                { status: 503, headers: { 'Retry-After': String(error.retryAfterSeconds) } }
+            );
+        }
         console.error('Error fetching lightning deals:', error);
         return NextResponse.json(
             {

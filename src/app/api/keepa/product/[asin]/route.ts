@@ -1,14 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProductWithHistory } from '@/lib/keepa';
-import { checkRateLimit, getClientIp, rateLimitExceeded } from '@/lib/rateLimit';
+import { checkRateLimit, getClientIp, getSessionId, sessionCookieHeader, rateLimitExceeded } from '@/lib/rateLimit';
+import { BudgetExhaustedError } from '@/lib/keepaBudget';
 
 export async function GET(
     request: NextRequest,
     { params }: { params: Promise<{ asin: string }> }
 ) {
     const ip = getClientIp(request);
-    const rl = checkRateLimit(ip, 'keepa-product', { limit: 20, windowSeconds: 60 });
+    const rl = checkRateLimit(ip, 'keepa-product', { limit: 12, windowSeconds: 60 });
     if (!rl.allowed) return rateLimitExceeded(rl);
+
+    // Session-based rate limit (survives IP rotation)
+    const sessionId = getSessionId(request);
+    const sessionRl = checkRateLimit(sessionId, 'session-keepa', { limit: 12, windowSeconds: 60 });
+    if (!sessionRl.allowed) {
+        const res = rateLimitExceeded(sessionRl);
+        res.headers.set('Set-Cookie', sessionCookieHeader(sessionId));
+        return res;
+    }
 
     try {
         const { asin } = await params;
@@ -26,6 +36,7 @@ export async function GET(
         // First request costs ~2 tokens, subsequent requests are free
         const result = await getProductWithHistory(asin, {
             historyDays: includeHistory ? 1825 : 90, // 5 years if history requested
+            userFacing: true,
         });
 
         if (!result.product) {
@@ -35,14 +46,22 @@ export async function GET(
             );
         }
 
-        return NextResponse.json({
+        const res = NextResponse.json({
             success: true,
             product: result.product,
             priceHistory: includeHistory ? result.priceHistory : null,
             fromCache: result.fromCache,
             tokensLeft: result.tokensLeft,
         });
+        res.headers.set('Set-Cookie', sessionCookieHeader(sessionId));
+        return res;
     } catch (error) {
+        if (error instanceof BudgetExhaustedError) {
+            return NextResponse.json(
+                { success: false, error: 'Service temporarily unavailable. Please try again later.' },
+                { status: 503, headers: { 'Retry-After': String(error.retryAfterSeconds) } }
+            );
+        }
         console.error('Error fetching product:', error);
         return NextResponse.json(
             {

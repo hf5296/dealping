@@ -6,6 +6,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { consumeTokenBudget } from './keepaBudget';
+import { recordTokenUsage } from './keepaAnalytics';
 
 const KEEPA_API_BASE = 'https://api.keepa.com';
 const KEEPA_API_KEY = process.env.KEEPA_API_KEY;
@@ -641,6 +643,7 @@ export async function getLightningDeals(options: {
     minReviews?: number;
     limit?: number;
     skipCache?: boolean; // Force refresh (use sparingly!)
+    userFacing?: boolean; // If true, enforce token budget
 }): Promise<{ deals: DealPingProduct[]; tokensLeft: number; fromCache?: boolean }> {
     if (!KEEPA_API_KEY) {
         throw new Error('KEEPA_API_KEY is not configured');
@@ -667,8 +670,9 @@ export async function getLightningDeals(options: {
                     .filter(deal => deal.percentOff >= minPercentOff)
                     .slice(0, limit);
 
-                // If all cached deals are expired, force a refresh
-                if (filteredDeals.length === 0) {
+                // If all cached deals have expired (their dealEndTime passed), force a refresh.
+                // But if the API originally returned 0 deals, respect the cache — don't re-fetch.
+                if (filteredDeals.length === 0 && cachedData.deals.length > 0) {
                     console.log('[getLightningDeals] All cached deals expired, fetching fresh data');
                 } else {
                     console.log(`[getLightningDeals] Returning cached data (age: ${Math.round(cacheAge / 60000)} minutes, ${filteredDeals.length} active deals)`);
@@ -684,7 +688,11 @@ export async function getLightningDeals(options: {
 
     console.log('[getLightningDeals] Cache miss or expired, fetching from Keepa API (500 tokens)');
 
-    const params = new URLSearchParams({
+    // Budget check — lightning deals costs 500 tokens (after cache check)
+    consumeTokenBudget(500, options.userFacing ?? false);
+    recordTokenUsage('getLightningDeals', 500);
+
+const params = new URLSearchParams({
         key: KEEPA_API_KEY,
         domain: AMAZON_DOMAIN_UK.toString(),
         state,
@@ -839,7 +847,7 @@ async function batchFetchProducts(asins: string[]): Promise<Map<string, ProductP
         return new Map();
     }
 
-    // Keepa allows up to 100 ASINs per batch request
+// Keepa allows up to 100 ASINs per batch request
     const params = new URLSearchParams({
         key: KEEPA_API_KEY,
         domain: AMAZON_DOMAIN_UK.toString(),
@@ -916,6 +924,7 @@ export async function browseDeals(options: {
     excludeKindle?: boolean;
     validateRRP?: boolean; // If true, fetch actual LIST_PRICE for accurate RRP
     limit?: number; // Limit deals to validate (to control token cost)
+    userFacing?: boolean; // If true, enforce token budget
 }): Promise<{ deals: DealPingProduct[]; tokensLeft: number; hasMore: boolean }> {
     if (!KEEPA_API_KEY) {
         throw new Error('KEEPA_API_KEY is not configured');
@@ -961,7 +970,11 @@ export async function browseDeals(options: {
 
     console.log(`[browseDeals] Cache miss, fetching from Keepa API`);
 
-    // Category IDs to exclude (Books, Kindle, Media tend to have inflated RRP discounts)
+    // Budget check — browse deals costs 5 tokens (after cache check)
+    consumeTokenBudget(5, options.userFacing ?? false);
+    recordTokenUsage('browseDeals', 5);
+
+// Category IDs to exclude (Books, Kindle, Media tend to have inflated RRP discounts)
     // Only exclude these when browsing ALL deals, not when a specific category is requested
     const EXCLUDED_CATEGORIES = [
         266239,     // Books UK
@@ -1240,6 +1253,7 @@ export async function searchProducts(
     options: {
         page?: number;
         stats?: number;
+        userFacing?: boolean;
     } = {}
 ): Promise<{ products: DealPingProduct[]; tokensLeft: number }> {
     if (!KEEPA_API_KEY) {
@@ -1262,7 +1276,11 @@ export async function searchProducts(
 
     console.log(`[searchProducts] Cache miss for "${term}" page ${page}, fetching from Keepa API`);
 
-    const params = new URLSearchParams({
+    // Budget check — search costs 10 tokens (after cache check)
+    consumeTokenBudget(10, options.userFacing ?? false);
+    recordTokenUsage('searchProducts', 10);
+
+const params = new URLSearchParams({
         key: KEEPA_API_KEY,
         domain: AMAZON_DOMAIN_UK.toString(),
         type: 'product',
@@ -1359,6 +1377,7 @@ export async function getProduct(
     options: {
         stats?: number;
         history?: boolean;
+        userFacing?: boolean;
     } = {}
 ): Promise<{ product: DealPingProduct | null; tokensLeft: number }> {
     if (!KEEPA_API_KEY) {
@@ -1367,7 +1386,11 @@ export async function getProduct(
 
     const { stats = 90, history = false } = options;
 
-    const params = new URLSearchParams({
+    // Budget check — product lookup costs 1 token
+    consumeTokenBudget(1, options.userFacing ?? false);
+    recordTokenUsage('getProduct', 1);
+
+const params = new URLSearchParams({
         key: KEEPA_API_KEY,
         domain: AMAZON_DOMAIN_UK.toString(),
         asin: asin,
@@ -1494,6 +1517,7 @@ export async function getProductWithHistory(
     options: {
         skipCache?: boolean;
         historyDays?: number;
+        userFacing?: boolean;
     } = {}
 ): Promise<{
     product: DealPingProduct | null;
@@ -1529,7 +1553,11 @@ export async function getProductWithHistory(
         throw new Error('KEEPA_API_KEY is not configured');
     }
 
-    // Fetch product with history in one API call
+    // Budget check — product with history costs 2 tokens (after cache check)
+    consumeTokenBudget(2, options.userFacing ?? false);
+    recordTokenUsage('getProductWithHistory', 2);
+
+// Fetch product with history in one API call
     const params = new URLSearchParams({
         key: KEEPA_API_KEY,
         domain: AMAZON_DOMAIN_UK.toString(),
@@ -1828,13 +1856,18 @@ export async function getProductWithHistory(
  */
 export async function getPriceHistory(
     asin: string,
-    days: number = 90
+    days: number = 90,
+    options: { userFacing?: boolean } = {}
 ): Promise<{ data: PriceHistoryData | null; tokensLeft: number }> {
     if (!KEEPA_API_KEY) {
         throw new Error('KEEPA_API_KEY is not configured');
     }
 
-    const params = new URLSearchParams({
+    // Budget check — price history costs 2 tokens
+    consumeTokenBudget(2, options.userFacing ?? false);
+    recordTokenUsage('getPriceHistory', 2);
+
+const params = new URLSearchParams({
         key: KEEPA_API_KEY,
         domain: AMAZON_DOMAIN_UK.toString(),
         asin: asin,

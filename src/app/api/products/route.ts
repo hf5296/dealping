@@ -12,7 +12,7 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         const category = searchParams.get("category");
         const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "20") || 20, 1), 100);
-        const page = Math.max(parseInt(searchParams.get("page") || "1") || 1, 1);
+        const page = Math.min(Math.max(parseInt(searchParams.get("page") || "1") || 1, 1), 1000);
 
         const where = category
             ? { category: { slug: category } }

@@ -122,6 +122,27 @@ export function getClientIp(request: Request): string {
 }
 
 /**
+ * Get or create an anonymous session ID from the request cookie.
+ * Returns the session ID (existing or newly generated).
+ */
+export function getSessionId(request: Request): string {
+    const cookieHeader = request.headers.get('cookie') || '';
+    const match = cookieHeader.match(/(?:^|;\s*)__dp_sid=([a-f0-9-]+)/);
+    if (match) {
+        return match[1];
+    }
+    return crypto.randomUUID();
+}
+
+/**
+ * Build a Set-Cookie header value for the session ID.
+ */
+export function sessionCookieHeader(sessionId: string): string {
+    const maxAge = 86400; // 24 hours
+    return `__dp_sid=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
+}
+
+/**
  * Create rate limit headers for response
  */
 export function rateLimitHeaders(result: RateLimitResult): HeadersInit {

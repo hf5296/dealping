@@ -22,11 +22,10 @@ import { checkRateLimit, getClientIp, rateLimitExceeded } from '@/lib/rateLimit'
 const MIN_NOTIFICATION_INTERVAL_MS = 24 * 60 * 60 * 1000; // Don't re-notify within 24 hours
 
 function verifySecret(provided: string, expected: string): boolean {
-    try {
-        return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
-    } catch {
-        return false;
-    }
+    const key = 'secret-compare';
+    const a = crypto.createHmac('sha256', key).update(provided).digest();
+    const b = crypto.createHmac('sha256', key).update(expected).digest();
+    return crypto.timingSafeEqual(a, b);
 }
 
 export async function GET(request: NextRequest) {

@@ -8,6 +8,8 @@ import { getProductWithHistory } from "@/lib/keepa";
 import { formatTimeAgo } from "@/lib/utils";
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
+import { headers } from "next/headers";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 // Map Keepa/Amazon category names to app category slug + display name
 const CATEGORY_NAME_MAP: Record<string, { slug: string; name: string }> = {
@@ -97,6 +99,16 @@ export const revalidate = 3600;
 
 export default async function ProductPage({ params }: ProductPageProps) {
     const { id } = await params;
+
+    // Rate limit SSR product fetches to protect Keepa tokens
+    const headersList = await headers();
+    const ip = headersList.get('x-forwarded-for')?.split(',')[0].trim()
+        || headersList.get('x-real-ip')
+        || 'ssr-unknown';
+    const rl = checkRateLimit(ip, 'ssr-product', { limit: 15, windowSeconds: 60 });
+    if (!rl.allowed) {
+        notFound();
+    }
 
     // Fetch product data with caching (24hr file cache prevents token waste)
     // First visit: ~2 tokens, subsequent visits: 0 tokens (from cache)

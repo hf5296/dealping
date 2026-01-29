@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { searchProducts } from '@/lib/keepa';
-import { checkRateLimit, getClientIp, rateLimitExceeded } from '@/lib/rateLimit';
+import { checkRateLimit, getClientIp, getSessionId, sessionCookieHeader, rateLimitExceeded } from '@/lib/rateLimit';
+import { BudgetExhaustedError } from '@/lib/keepaBudget';
 
 // Simple in-memory cache for search results
 const searchCache = new Map<string, { data: unknown; timestamp: number }>();
@@ -8,8 +9,17 @@ const CACHE_DURATION_MS = 60 * 60 * 1000; // 1 hour (Keepa's same-request cachin
 
 export async function GET(request: NextRequest) {
     const ip = getClientIp(request);
-    const rl = checkRateLimit(ip, 'keepa-search', { limit: 10, windowSeconds: 60 });
+    const rl = checkRateLimit(ip, 'keepa-search', { limit: 5, windowSeconds: 60 });
     if (!rl.allowed) return rateLimitExceeded(rl);
+
+    // Session-based rate limit (survives IP rotation)
+    const sessionId = getSessionId(request);
+    const sessionRl = checkRateLimit(sessionId, 'session-keepa', { limit: 12, windowSeconds: 60 });
+    if (!sessionRl.allowed) {
+        const res = rateLimitExceeded(sessionRl);
+        res.headers.set('Set-Cookie', sessionCookieHeader(sessionId));
+        return res;
+    }
 
     try {
         const searchParams = request.nextUrl.searchParams;
@@ -29,11 +39,13 @@ export async function GET(request: NextRequest) {
         // Check cache
         const cached = searchCache.get(cacheKey);
         if (cached && Date.now() - cached.timestamp < CACHE_DURATION_MS) {
-            return NextResponse.json(cached.data);
+            const res = NextResponse.json(cached.data);
+            res.headers.set('Set-Cookie', sessionCookieHeader(sessionId));
+            return res;
         }
 
         // Search products via Keepa
-        const result = await searchProducts(query, { page, stats: 90 });
+        const result = await searchProducts(query, { page, stats: 90, userFacing: true });
 
         const responseData = {
             success: true,
@@ -60,8 +72,16 @@ export async function GET(request: NextRequest) {
             }
         }
 
-        return NextResponse.json(responseData);
+        const res = NextResponse.json(responseData);
+        res.headers.set('Set-Cookie', sessionCookieHeader(sessionId));
+        return res;
     } catch (error) {
+        if (error instanceof BudgetExhaustedError) {
+            return NextResponse.json(
+                { success: false, error: 'Service temporarily unavailable. Please try again later.', products: [] },
+                { status: 503, headers: { 'Retry-After': String(error.retryAfterSeconds) } }
+            );
+        }
         console.error('Error searching products:', error);
         return NextResponse.json(
             {
