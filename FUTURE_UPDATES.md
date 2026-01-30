@@ -2,7 +2,16 @@
 
 ## Remaining Features
 
+### High Priority
+- [ ] **Fix mobile scroll bug** - Product pages open scrolled to the bottom on mobile instead of at the top
+  - Related to Next.js App Router scroll restoration and CSS interactions
+  - Removed the wildcard `*` transition rule in `globals.css` but issue persists
+  - Needs further investigation into IntersectionObserver / scroll behavior
+
 ### Medium Priority
+- [ ] **iOS App** - Publish DealPing as a native iOS app on the App Store
+  - Could use React Native or a WebView wrapper
+  - Alternatively, build as a full PWA first and submit via Safari Web App
 - [ ] **PWA Support** - Add to home screen, offline mode, push notifications
   - Would need a service worker and manifest.json
   - Consider using `next-pwa` package
@@ -62,6 +71,7 @@ Daily Keepa token budget: ~30,000 tokens (refills at 20 tokens/minute)
 - [ ] Wishlist/favorites feature
 - [ ] Deal sharing with friends
 - [ ] Price comparison with other retailers
+- [ ] Add additional popular categories (e.g. Automotive, Pet Supplies, DIY & Tools, Books, Music, Garden, Fashion)
 - [ ] Historical price charts on category pages
 - [ ] "Similar deals" recommendations
 - [ ] User reviews/comments on deals
