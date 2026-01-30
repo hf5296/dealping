@@ -191,7 +191,7 @@ export default function DealsClient({ initialDeals }: DealsClientProps) {
 
         observer.observe(sentinel);
         return () => observer.disconnect();
-    }, [hasMoreLocal, revealLocalBatch, visibleCount]);
+    }, [hasMoreLocal, revealLocalBatch]);
 
     // Reset visible count when filter/sort changes
     useEffect(() => {
