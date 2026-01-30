@@ -50,9 +50,10 @@ export async function GET(request: NextRequest) {
 
         console.log(`[cron/refresh-deals] Fetched ${result.deals.length} deals, ${result.tokensLeft} tokens remaining`);
 
-        // Revalidate the homepage to pick up new deals
+        // Revalidate pages to pick up new deals
         revalidatePath('/');
         revalidatePath('/deals');
+        revalidatePath('/lightning-deals');
 
         return NextResponse.json({
             success: true,

@@ -6,9 +6,8 @@ import ProductCard from "@/components/ProductCard";
 import { categories } from "@/lib/sampleData";
 import { getLightningDeals, DealPingProduct } from "@/lib/keepa";
 
-// Static page - deals are refreshed once daily via cron job at midnight
-// The cron job calls /api/cron/refresh-deals which revalidates this page
-export const revalidate = false; // Fully static until revalidated
+// Revalidate every 5 minutes so deals stay fresh and self-heal
+export const revalidate = 300;
 
 async function getLightningDealsForHomepage(): Promise<DealPingProduct[]> {
   try {
