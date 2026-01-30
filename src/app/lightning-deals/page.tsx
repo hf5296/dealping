@@ -13,7 +13,7 @@ export const metadata: Metadata = {
     },
 };
 
-// Revalidate every 5 minutes to keep deals fresh
+// Force dynamic rendering so time-sensitive deals are never stale
 export const dynamic = 'force-dynamic';
 
 async function getInitialDeals(): Promise<DealPingProduct[]> {
