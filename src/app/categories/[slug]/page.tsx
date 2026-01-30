@@ -5,8 +5,8 @@ import { categories } from "@/lib/sampleData";
 import { browseDeals, DealPingProduct, UK_CATEGORIES, PRICE_TYPES } from "@/lib/keepa";
 import { notFound } from "next/navigation";
 
-// Revalidate every 5 minutes
-export const revalidate = 300;
+// Force dynamic rendering so time-sensitive deals are never stale
+export const dynamic = 'force-dynamic';
 
 interface CategoryPageProps {
     params: Promise<{ slug: string }>;

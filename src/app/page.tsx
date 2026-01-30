@@ -6,8 +6,8 @@ import ProductCard from "@/components/ProductCard";
 import { categories } from "@/lib/sampleData";
 import { getLightningDeals, DealPingProduct } from "@/lib/keepa";
 
-// Revalidate every 5 minutes so deals stay fresh and self-heal
-export const revalidate = 300;
+// Force dynamic rendering so time-sensitive deals are never stale
+export const dynamic = 'force-dynamic';
 
 async function getLightningDealsForHomepage(): Promise<DealPingProduct[]> {
   try {

@@ -3,8 +3,8 @@ import Footer from "@/components/Footer";
 import DealsClient from "./DealsClient";
 import { browseDeals, PRICE_TYPES, DealPingProduct } from "@/lib/keepa";
 
-// Revalidate every 5 minutes for fresh deals
-export const revalidate = 300;
+// Force dynamic rendering so time-sensitive deals are never stale
+export const dynamic = 'force-dynamic';
 
 async function getDeals(): Promise<DealPingProduct[]> {
     try {
