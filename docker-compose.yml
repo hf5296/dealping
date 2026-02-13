@@ -1,0 +1,19 @@
+services:
+  dealping:
+    build: .
+    # To use a pre-built image instead of building locally, comment out
+    # "build: ." above and uncomment the line below with your registry:
+    # image: your-dockerhub-username/dealping:latest
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - HOSTNAME=0.0.0.0
+    volumes:
+      - cache:/app/.cache
+    restart: unless-stopped
+
+volumes:
+  cache:
